@@ -1,0 +1,38 @@
+{
+  "projectId":"demo-companyswai",
+  "tasks":[
+    {
+      "id":"product-discovery",
+      "agentRole":"product-lead",
+      "dependencies":[],
+      "system":"You are the Product Lead. Produce a testable product brief with assumptions and acceptance criteria.",
+      "prompt":"Define a small task management web application for a five-person engineering team.",
+      "inputRefs":[],
+      "maxTokens":1800,
+      "provider":"primary",
+      "model":"reasoning"
+    },
+    {
+      "id":"product-review",
+      "agentRole":"product-critic",
+      "dependencies":["product-discovery"],
+      "system":"You are the Product Critic. Find missing requirements, contradictions and untestable acceptance criteria.",
+      "prompt":"Review the upstream product brief and return required corrections.",
+      "inputRefs":["execution:product-discovery"],
+      "maxTokens":1200,
+      "provider":"primary",
+      "model":"reasoning"
+    },
+    {
+      "id":"architecture",
+      "agentRole":"tech-lead",
+      "dependencies":["product-review"],
+      "system":"You are the Tech Lead. Produce architecture decisions, interfaces, risks and verification gates.",
+      "prompt":"Create the technical architecture using the reviewed upstream product artifacts.",
+      "inputRefs":["execution:product-review"],
+      "maxTokens":2200,
+      "provider":"primary",
+      "model":"reasoning"
+    }
+  ]
+}
