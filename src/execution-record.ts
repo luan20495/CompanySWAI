@@ -1,0 +1,24 @@
+import {z} from "zod";
+
+export const ExecutionRecord=z.object({
+ id:z.string(),
+ projectId:z.string(),
+ taskId:z.string(),
+ agentRole:z.string(),
+ provider:z.string(),
+ model:z.string(),
+ status:z.enum(["STARTED","CHECKPOINTED","SUCCEEDED","FAILED","PAUSED_CAPACITY"]),
+ startedAt:z.string(),
+ finishedAt:z.string().optional(),
+ inputRefs:z.array(z.string()).default([]),
+ output:z.string().default(""),
+ artifactRefs:z.array(z.string()).default([]),
+ decisionRefs:z.array(z.string()).default([]),
+ reviewRefs:z.array(z.string()).default([]),
+ inputTokens:z.number().int().nonnegative().default(0),
+ outputTokens:z.number().int().nonnegative().default(0),
+ estimatedCost:z.number().nonnegative().optional(),
+ actualCost:z.number().nonnegative().optional(),
+ error:z.string().optional()
+});
+export type ExecutionRecordValue=z.infer<typeof ExecutionRecord>;
