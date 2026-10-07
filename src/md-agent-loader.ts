@@ -1,4 +1,4 @@
-import {readFile,readdir} from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {z} from "zod";
 import {SafeId} from "./ids.js";
@@ -12,15 +12,15 @@ const RuleMeta=z.object({
  requires:z.array(z.string()).default([]),optionalRequires:z.array(z.string()).default([]),
  produces:z.array(z.string()).default([]),reviewedBy:z.string().default("none")
 });
-export type AgentDefinition=z.infer<typeof AgentMeta>&z.infer<typeof RuleMeta>&{
- identity:string;rules:string;skillText:string[];
-};
+const ManifestMeta=z.object({agents:z.array(SafeId).length(11)});
+export type AgentDefinition=z.infer<typeof AgentMeta>&z.infer<typeof RuleMeta>&{identity:string;rules:string;skillText:string[]};
 
 function scalar(raw:string):unknown{
  const value=raw.trim();
  if(value.startsWith("[")||value.startsWith("{"))return JSON.parse(value);
  if(/^\d+$/.test(value))return Number(value);
- if(value==="true")return true;if(value==="false")return false;
+ if(value==="true")return true;
+ if(value==="false")return false;
  return value;
 }
 export function parseMarkdownFrontmatter(text:string){
@@ -29,7 +29,8 @@ export function parseMarkdownFrontmatter(text:string){
  const meta:Record<string,unknown>={};
  for(const line of match[1].split(/\r?\n/)){
   if(!line.trim()||line.trim().startsWith("#"))continue;
-  const index=line.indexOf(":");if(index<1)throw new Error("Invalid frontmatter line: "+line);
+  const index=line.indexOf(":");
+  if(index<1)throw new Error("Invalid frontmatter line: "+line);
   meta[line.slice(0,index).trim()]=scalar(line.slice(index+1));
  }
  return {meta,body:match[2].trim()};
@@ -39,7 +40,10 @@ export class MarkdownAgentRegistry{
  constructor(private agentsRoot="agents",private skillsRoot="skills"){}
  async loadAgent(id:string):Promise<AgentDefinition>{
   const dir=join(this.agentsRoot,SafeId.parse(id));
-  const [identityText,rulesText]=await Promise.all([readFile(join(dir,"IDENTITY.md"),"utf8"),readFile(join(dir,"RULES.md"),"utf8")]);
+  const [identityText,rulesText]=await Promise.all([
+   readFile(join(dir,"IDENTITY.md"),"utf8"),
+   readFile(join(dir,"RULES.md"),"utf8")
+  ]);
   const identity=parseMarkdownFrontmatter(identityText),rules=parseMarkdownFrontmatter(rulesText);
   const im=AgentMeta.parse(identity.meta),rm=RuleMeta.parse(rules.meta);
   if(im.id!==id)throw new Error("Agent directory/id mismatch: "+id);
@@ -47,9 +51,10 @@ export class MarkdownAgentRegistry{
   return {...im,...rm,identity:identity.body,rules:rules.body,skillText};
  }
  async loadAll(){
-  const entries=await readdir(this.agentsRoot,{withFileTypes:true});
-  const ids=entries.filter(e=>e.isDirectory()).map(e=>e.name).sort();
-  return Promise.all(ids.map(id=>this.loadAgent(id)));
+  const manifest=parseMarkdownFrontmatter(await readFile(join(this.agentsRoot,"AGENTS.md"),"utf8"));
+  const {agents}=ManifestMeta.parse(manifest.meta);
+  if(new Set(agents).size!==agents.length)throw new Error("Duplicate agent id in AGENTS.md");
+  return Promise.all(agents.map(id=>this.loadAgent(id)));
  }
 }
 
