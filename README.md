@@ -1,29 +1,39 @@
 # CompanySWAI
 
-An AI software company you can run locally: one Product Lead coordinates specialist agents through explicit tasks, artifacts, reviews, and quality gates.
+A reusable AI software-company runtime designed to run locally. Teams are composed from project capabilities and complexity instead of being hard-coded to one language or framework.
 
-## Team
-- Product Lead — talks to the owner, discovers requirements, owns scope, plan and delivery.
-- Tech Lead — architecture, technical contracts, integration and engineering quality.
-- Designer — UX flows, UI constitution, design tokens, prototype and post-build UI review.
-- Backend — domain, API, data, security implementation.
-- Frontend — implements approved UX/UI and frontend behavior.
-- Infra — environments, CI/CD, observability, reliability.
-- QA — requirement traceability, automated coverage, regression and release evidence.
+## Current architecture
+- Product: Product Lead, BA, Researcher, Product Critic.
+- Architecture: Tech Lead plus security/performance specialists when risk requires them.
+- Backend and Frontend: elastic engineering teams with independent review.
+- Mobile: platform-neutral Mobile Architect/Engineer with Android and iOS native specialists for deep platform work.
+- Design: UX research, UX, UI and independent design review.
+- Platform: DevOps/SRE and platform security as needed.
+- QA: functional/API, automation/E2E and performance/security coverage.
 
-## Workflow
-Owner → Product Lead → Tech Lead → specialists → review gates → QA → Product Lead → Owner.
+All engineering roles follow the engineering fundamentals baseline in `docs/ENGINEERING-BASELINE.md`.
 
-Agents never hand off vague prose. Every handoff uses a Task Contract and produces named Artifacts with acceptance criteria and evidence.
+## Runtime core implemented
+- Capability/complexity based team composition.
+- Structured Task, Review and Checkpoint contracts.
+- Dependency-aware scheduler.
+- Provider capacity eligibility and cost-aware routing primitives.
+- Provider-neutral model interface and registry.
+- Persistent task checkpoints under `.companyswai/checkpoints/`.
+- Persistent per-agent execution records under `.companyswai/executions/<project>/records.jsonl`.
+- Task runner records STARTED/SUCCEEDED/FAILED output, token usage and writes a resumable checkpoint.
+- Core automated tests.
 
-## Local start
-1. Clone this repository.
-2. Copy `.env.example` to `.env`.
-3. Configure an available model provider and model.
-4. Install dependencies: `npm install`.
-5. Run: `npm run dev -- "Describe the product you want to build"`.
+## Execution visibility
+Agent output is not allowed to exist only in chat context. Each execution is appended as a structured record containing project/task/agent, provider/model, input references, output, artifacts/decisions/reviews, token usage, cost fields, timestamps and status. This becomes the source for the future local dashboard and audit trail.
 
-> Provider credentials are intentionally not committed. Use a provider/API authentication method supported by your local environment.
+## Verification
+```bash
+npm install
+npm run check
+```
 
-## Status
-v0.1 bootstrap: agent roles, orchestration protocol, Claude-compatible provider adapter, CLI runner, and quality gates.
+## Not finished yet
+The repository is not yet a complete autonomous software company. Real provider adapters, live quota/credit discovery where providers permit it, multi-agent review/approval loop, project workspace tooling, CLI, and the local web dashboard still need to be connected and verified end-to-end.
+
+Provider credentials must never be committed.
