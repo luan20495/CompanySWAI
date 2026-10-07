@@ -1,0 +1,20 @@
+{
+  "providers":[
+    {
+      "provider":"anthropic",
+      "model":"claude-sonnet-4-5",
+      "state":"AVAILABLE",
+      "capabilities":["reasoning","product","review","architecture","coding"],
+      "contextWindow":200000,
+      "maxConcurrency":2
+    },
+    {
+      "provider":"openrouter",
+      "model":"anthropic/claude-sonnet-4.5",
+      "state":"AVAILABLE",
+      "capabilities":["reasoning","product","review","architecture","coding"],
+      "contextWindow":200000,
+      "maxConcurrency":2
+    }
+  ]
+}
