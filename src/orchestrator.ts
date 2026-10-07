@@ -1,21 +1,39 @@
-import type {ModelProvider} from "./provider.js";
 import {ProjectPlan,type ProjectPlanValue} from "./project.js";
+import type {ProviderSelector} from "./provider-selector.js";
 import {FileExecutionStore} from "./execution-store.js";
 import {FileCheckpointStore} from "./checkpoint-store.js";
 import {TaskRunner} from "./runner.js";
 
-export type ProviderResolver=(provider:string,model:string)=>ModelProvider;
 export type ProjectRunSummary={projectId:string;completed:string[];waves:number;reviewRuns:number;revisions:number};
+
+type SelectionFields={
+ provider?:string;model?:string;capabilities:string[];
+ estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number;
+};
 
 export class ProjectOrchestrator{
  private runner:TaskRunner;
 
  constructor(
-  private resolve:ProviderResolver,
+  private selectProvider:ProviderSelector,
   private executions=new FileExecutionStore(),
   checkpoints=new FileCheckpointStore()
  ){
   this.runner=new TaskRunner(executions,checkpoints);
+ }
+
+ private providerFor(target:SelectionFields){
+  return this.selectProvider({
+   preferredProvider:target.provider,
+   preferredModel:target.model,
+   demand:{
+    capabilities:target.capabilities,
+    estimatedInputTokens:target.estimatedInputTokens,
+    estimatedOutputTokens:target.estimatedOutputTokens,
+    maxCost:target.maxCost,
+    minContextWindow:target.minContextWindow
+   }
+  });
  }
 
  private validateGraph(plan:ProjectPlanValue){
@@ -73,7 +91,7 @@ export class ProjectOrchestrator{
 
    await Promise.all(ready.map(async task=>{
     const basePrompt=await this.buildPrompt(plan,task.id);
-    const maker=this.resolve(task.provider,task.model);
+    const maker=this.providerFor(task);
     await this.runner.run({
      projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:task.inputRefs,
      system:task.system,prompt:basePrompt,maxTokens:task.maxTokens
@@ -83,7 +101,7 @@ export class ProjectOrchestrator{
 
     for(let round=1;round<=task.review.maxRounds;round++){
      const output=await this.latestOutput(plan.projectId,task.id);
-     const reviewer=this.resolve(task.review.provider,task.review.model);
+     const reviewer=this.providerFor(task.review);
      const reviewTaskId=task.id+"--review-"+round;
      const review=await this.runner.run({
       projectId:plan.projectId,
