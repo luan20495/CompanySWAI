@@ -1,0 +1,6 @@
+{
+  "projectId": "example-commerce",
+  "objective": "Build a production-ready commerce application with a web storefront, backend APIs and deployable infrastructure.",
+  "capabilities": ["backend", "web-ui", "deployment", "security-critical"],
+  "complexity": 4
+}

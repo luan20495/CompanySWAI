@@ -1,9 +1,9 @@
 # Engineering baseline
 
-Every engineering agent, not only architects, must reason from fundamentals rather than framework habit.
+The executable prompt source is `skills/engineering-fundamentals.md`.
 
-Required baseline: data structures and algorithms; time and space complexity; memory and CPU behavior; concurrency and async; I/O and networking; database, index and query behavior; caching; security; testing; debugging and profiling; platform and runtime behavior.
+Engineering agents must reason from fundamentals rather than framework habit: algorithms/data structures, time and space complexity, memory/CPU, concurrency/async, I/O/networking, database/index/query behavior, caching, security, testing, debugging/profiling and runtime/platform behavior.
 
-Developers optimize and measure their implementation. Reviewers independently challenge correctness, complexity, performance and maintainability. Architects optimize system-wide trade-offs and prevent local optimizations from damaging the whole.
+Performance-sensitive decisions require repeatable evidence such as benchmark, profiler, trace or load test.
 
-Performance-sensitive decisions require evidence such as a benchmark, profiler, trace, load test or another repeatable measurement. "Looks fast" is not evidence.
+This document is explanatory; role-specific runtime instructions belong in Markdown agent/skill files.

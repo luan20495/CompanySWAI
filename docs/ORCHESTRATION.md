@@ -1,12 +1,16 @@
 # Orchestration principles
 
-- Give each agent minimum sufficient context through references, not the whole conversation.
-- Exchange structured Task, Artifact, Decision, Review, Blocker and Handoff records.
-- Build a dependency graph and parallelize only independent work.
-- Scale review depth with risk. A producer is never the sole approver of critical work.
-- Route reasoning-heavy and critical review to stronger models; use cheaper capable models for routine work.
-- Prefer deterministic tests, compilers, linters and profilers over model calls when possible.
-- Estimate provider capacity and cost before execution. Owner approval is required when configured budget thresholds would be exceeded.
-- Persist checkpoints outside model context. Provider failure or quota exhaustion pauses work; it does not erase progress.
-- Re-plan against whichever providers are currently available. Tasks specify capability requirements, not a hard-coded provider.
-- Compare estimate with actual usage and feed validated lessons into Company Experience.
+The company definition is Markdown-first. Runtime orchestration reads `company/*.md`, the active agents' `IDENTITY.md` and `RULES.md`, and only the skills referenced by those active agents.
+
+- Give each agent minimum sufficient context, not the whole project history.
+- Resolve work ordering from produced/required artifacts.
+- Parallelize only tasks whose dependencies are satisfied.
+- Keep reviewer independence.
+- Scale review depth with risk.
+- Prefer deterministic build/test/lint/profiler evidence over model opinion.
+- Route by capability/cost/capacity instead of locking tasks to one provider.
+- Persist checkpoints and execution records outside model context.
+- Pause safely on capacity exhaustion.
+- Compare estimate with actual usage and feed validated lessons into retrospective learning.
+
+TypeScript owns execution mechanics; Markdown owns company behaviour.

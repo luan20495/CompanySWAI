@@ -1,21 +1,25 @@
 # Elastic organization
 
-CompanySWAI does not have a fixed headcount. It has stable departments, role contracts and quality gates.
+CompanySWAI has **11 core agent definitions** in Markdown, but only activates the roles a project actually needs.
 
-## Composition
-A project declares capabilities and complexity. The orchestrator activates only departments that add value.
-- No UI: no Design or Frontend department.
-- No deployment responsibility: Platform can be omitted.
-- Security-critical: add security specialists and an extra review layer.
-- High complexity: add makers/reviewers, not redundant managers.
+## Source of truth
+Activation is declared in each `agents/<id>/IDENTITY.md`.
+Dependencies and handoffs are declared in `agents/<id>/RULES.md`.
+The runtime must not recreate these role rules in TypeScript.
 
-## Scaling rule
-Scale because of workload, risk, domain breadth or independent-review need — never just because more agents are available.
+## Scaling
+- Product Lead, Business Analyst, Tech Lead, Reviewer and QA are core control/quality roles.
+- Researcher activates for higher-complexity work.
+- Backend Engineer activates only for backend capability.
+- Frontend Engineer activates only for web UI capability.
+- Mobile Engineer activates only for mobile capability.
+- UX/UI Designer activates only when web or mobile UI exists.
+- DevOps/SRE activates only when deployment responsibility exists.
 
-## Collaboration patterns
-Implementation: Maker → Reviewer → Approver.
-Research: Researcher → Analyst → Critic.
-UI: UX/UI specification → Frontend implementation → Designer inspection of running product → QA.
-Architecture: Proposal → adversarial review → Tech Lead decision → ADR.
+Scale because of capability, complexity, risk or independent-review need — not because more model calls are available.
 
-A producing agent cannot be the sole approver of its own work.
+## Collaboration
+Artifact dependencies define the graph. For example:
+Product Plan → Requirements → Architecture → Design/Implementation → Review → QA.
+
+A producer cannot be its own independent reviewer.
