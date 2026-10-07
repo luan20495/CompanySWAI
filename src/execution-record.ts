@@ -1,9 +1,10 @@
 import {z} from "zod";
+import {SafeId} from "./ids.js";
 
 export const ExecutionRecord=z.object({
  id:z.string(),
- projectId:z.string(),
- taskId:z.string(),
+ projectId:SafeId,
+ taskId:SafeId,
  agentRole:z.string(),
  provider:z.string(),
  model:z.string(),

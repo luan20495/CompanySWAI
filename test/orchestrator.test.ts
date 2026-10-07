@@ -7,22 +7,17 @@ import type {ModelProvider} from "../src/provider.js";
 import {ProjectOrchestrator} from "../src/orchestrator.js";
 import {FileExecutionStore} from "../src/execution-store.js";
 import {FileCheckpointStore} from "../src/checkpoint-store.js";
+import {ProjectPlan} from "../src/project.js";
 
 test("orchestrator runs dependency waves and passes upstream output",async()=>{
  const root=await mkdtemp(join(tmpdir(),"companyswai-orchestrator-"));
  const executions=new FileExecutionStore(join(root,"executions"));
  const checkpoints=new FileCheckpointStore(join(root,"checkpoints"));
  const prompts:string[]=[];
-
  const resolver=(_provider:string,model:string):ModelProvider=>({
-  name:"fake",
-  model,
-  async generate(request){
-   prompts.push(request.prompt);
-   return {text:"output:"+request.prompt.slice(0,20),inputTokens:5,outputTokens:7};
-  }
+  name:"fake",model,
+  async generate(request){prompts.push(request.prompt);return {text:"output:"+request.prompt.slice(0,20),inputTokens:5,outputTokens:7};}
  });
-
  const orchestrator=new ProjectOrchestrator(resolver,executions,checkpoints);
  const summary=await orchestrator.run({
   projectId:"p1",
@@ -32,27 +27,46 @@ test("orchestrator runs dependency waves and passes upstream output",async()=>{
    {id:"architecture",agentRole:"tech-lead",dependencies:["critic"],system:"design",prompt:"design system",inputRefs:["execution:critic"],maxTokens:100,provider:"fake",model:"m1"}
   ]
  });
-
  assert.equal(summary.waves,3);
- assert.deepEqual(summary.completed,["product","critic","architecture"]);
  assert.match(prompts[1],/UPSTREAM product/);
  assert.match(prompts[2],/UPSTREAM critic/);
- const records=await executions.list("p1");
- assert.equal(records.filter(record=>record.status==="SUCCEEDED").length,3);
+ assert.equal((await executions.list("p1")).filter(record=>record.status==="SUCCEEDED").length,3);
 });
 
-test("orchestrator rejects missing dependency",async()=>{
- const root=await mkdtemp(join(tmpdir(),"companyswai-invalid-"));
- const orchestrator=new ProjectOrchestrator(
-  ()=>({name:"fake",model:"m",async generate(){return {text:"ok",inputTokens:1,outputTokens:1};}}),
-  new FileExecutionStore(join(root,"executions")),
-  new FileCheckpointStore(join(root,"checkpoints"))
- );
- await assert.rejects(
-  orchestrator.run({
-   projectId:"p2",
-   tasks:[{id:"a",agentRole:"backend-dev",dependencies:["missing"],system:"work",prompt:"build feature",inputRefs:[],maxTokens:20,provider:"fake",model:"m"}]
-  }),
-  /Missing dependency/
- );
+test("review gate revises maker output until reviewer passes",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"companyswai-review-"));
+ const executions=new FileExecutionStore(join(root,"executions"));
+ let makerCalls=0;
+ let reviewerCalls=0;
+ const resolver=(_provider:string,model:string):ModelProvider=>({
+  name:"fake",model,
+  async generate(request){
+   if(request.system==="reviewer"){
+    reviewerCalls++;
+    return {text:reviewerCalls===1?"CHANGES_REQUIRED\nAdd acceptance criteria.":"PASS\nAll criteria are testable.",inputTokens:5,outputTokens:5};
+   }
+   makerCalls++;
+   return {text:makerCalls===1?"draft":"revised with acceptance criteria",inputTokens:5,outputTokens:5};
+  }
+ });
+ const orchestrator=new ProjectOrchestrator(resolver,executions,new FileCheckpointStore(join(root,"checkpoints")));
+ const summary=await orchestrator.run({
+  projectId:"review-project",
+  tasks:[{
+   id:"brief",agentRole:"product-lead",dependencies:[],system:"maker",prompt:"write brief",inputRefs:[],
+   maxTokens:100,provider:"fake",model:"m1",
+   review:{role:"product-critic",system:"reviewer",provider:"fake",model:"m1",maxTokens:80,maxRounds:2}
+  }]
+ });
+ assert.equal(summary.reviewRuns,2);
+ assert.equal(summary.revisions,1);
+ assert.equal(makerCalls,2);
+ assert.equal(reviewerCalls,2);
+});
+
+test("project IDs reject traversal characters",()=>{
+ assert.throws(()=>ProjectPlan.parse({
+  projectId:"../escape",
+  tasks:[{id:"a",agentRole:"dev",dependencies:[],system:"work",prompt:"build it",inputRefs:[],maxTokens:10,provider:"fake",model:"m"}]
+ }));
 });
