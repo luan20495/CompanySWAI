@@ -10,7 +10,7 @@ import {buildRetrospective,FileRetrospectiveStore} from "./retrospective.js";
 const args=process.argv.slice(2),briefPath=args.find(a=>!a.startsWith("--")),runtimeFlag=args.indexOf("--runtime"),runtimePath=runtimeFlag>=0?args[runtimeFlag+1]:"config/providers.json";
 if(!briefPath)throw new Error("Usage: npm run company -- <project-brief.json> [--runtime config/providers.json]");
 const brief=ProjectBrief.parse(JSON.parse(await readFile(briefPath,"utf8")));
-const plan=compileBriefToProjectPlan(brief),runtime=await loadRuntime(runtimePath);
+const plan=await compileBriefToProjectPlan(brief),runtime=await loadRuntime(runtimePath);
 const summary=await new ProjectOrchestrator(runtime.selector).run(plan);
 const records=await new FileExecutionStore().list(plan.projectId);
 const retrospective=await new FileRetrospectiveStore().save(buildRetrospective(plan.projectId,records));

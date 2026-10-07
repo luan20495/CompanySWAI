@@ -3,10 +3,11 @@ import test from "node:test";
 import {compileBriefToProjectPlan} from "../src/plan-compiler.js";
 import {buildRetrospective} from "../src/retrospective.js";
 
-test("brief compiler produces executable reviewed project plan",()=>{
- const plan=compileBriefToProjectPlan({projectId:"secure-shop",objective:"Build a secure production commerce application",capabilities:["backend","web-ui","security-critical"],complexity:4});
- assert.ok(plan.tasks.length>5);assert.ok(plan.tasks.every(t=>t.system&&t.prompt));
- assert.ok(plan.tasks.some(t=>t.review));assert.ok(plan.tasks.some(t=>t.capabilities.includes("critical-review")));
+test("MD brief compiler produces executable reviewed project plan",async()=>{
+ const plan=await compileBriefToProjectPlan({projectId:"secure-shop",objective:"Build a secure production commerce application",capabilities:["backend","web-ui","security-critical"],complexity:4});
+ assert.ok(plan.tasks.length>=6);assert.ok(plan.tasks.every(t=>t.system&&t.prompt));assert.ok(plan.tasks.some(t=>t.review));
+ assert.ok(plan.tasks.find(t=>t.agentRole==="backend-engineer")?.system.includes("Backend Engineer"));
+ assert.ok(plan.tasks.find(t=>t.agentRole==="backend-engineer")?.system.includes("Engineering fundamentals"));
 });
 test("retrospective detects capacity and cost estimation lessons",()=>{
  const base={projectId:"p",agentRole:"dev",provider:"x",model:"m",startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),inputRefs:[],output:"",artifactRefs:[],decisionRefs:[],reviewRefs:[],inputTokens:100,outputTokens:100};

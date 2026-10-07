@@ -1,39 +1,35 @@
 # CompanySWAI
 
-A reusable AI software-company runtime designed to run locally. Teams are composed from project capabilities and complexity instead of being hard-coded to one language or framework.
+CompanySWAI is a lightweight, local, **MD-driven AI software company**. Markdown defines the company, 11 core agents, their rules, skills, dependencies and quality gates. TypeScript is the small execution engine.
 
-## Current architecture
-- Product: Product Lead, BA, Researcher, Product Critic.
-- Architecture: Tech Lead plus security/performance specialists when risk requires them.
-- Backend and Frontend: elastic engineering teams with independent review.
-- Mobile: platform-neutral Mobile Architect/Engineer with Android and iOS native specialists for deep platform work.
-- Design: UX research, UX, UI and independent design review.
-- Platform: DevOps/SRE and platform security as needed.
-- QA: functional/API, automation/E2E and performance/security coverage.
+## Why MD-first
+- Human-readable in GitHub and local editors.
+- Easy to version, review and change without modifying runtime code.
+- Loads only the active agents and only the skills each agent needs.
+- Keeps role prompts out of TypeScript.
+- Makes dependencies explicit through produced/required artifacts.
+- No web UI is required to operate or inspect the company.
 
-All engineering roles follow the engineering fundamentals baseline in `docs/ENGINEERING-BASELINE.md`.
+## Source of truth
+- `company/COMPANY.md` — global operating principles.
+- `company/WORKFLOW.md` — company flow.
+- `company/QUALITY-GATES.md` — universal quality gates.
+- `agents/<agent>/IDENTITY.md` — identity, activation and relevant skills.
+- `agents/<agent>/RULES.md` — dependencies, outputs, reviewer and DONE rules.
+- `skills/*.md` — reusable skills loaded only when referenced.
 
-## Runtime core implemented
-- Capability/complexity based team composition.
-- Structured Task, Review and Checkpoint contracts.
-- Dependency-aware scheduler.
-- Provider capacity eligibility and cost-aware routing primitives.
-- Provider-neutral model interface and registry.
-- Persistent task checkpoints under `.companyswai/checkpoints/`.
-- Persistent per-agent execution records under `.companyswai/executions/<project>/records.jsonl`.\n- Persistent Artifact, Decision and Handoff stores plus isolated project workspaces.\n- Capability-driven company work planner that converts a project brief into departments, roles, dependency-aware work and reviewers.
-- Task runner records STARTED/SUCCEEDED/FAILED output, token usage and writes a resumable checkpoint.
-- Core automated tests.
+The 11 core agents are Product Lead, Business Analyst, Researcher, Tech Lead, Backend Engineer, Frontend Engineer, Mobile Engineer, UX/UI Designer, Independent Reviewer, QA Engineer and DevOps/SRE.
 
-## Execution visibility
-Agent output is not allowed to exist only in chat context. Each execution is appended as a structured record containing project/task/agent, provider/model, input references, output, artifacts/decisions/reviews, token usage, cost fields, timestamps and status. This becomes the source for the future local dashboard and audit trail.
+## Runtime responsibilities
+The TypeScript core parses/validates Markdown, activates agents by project capability/complexity, resolves artifact dependencies, builds executable plans, routes providers, controls budget/approval/concurrency, handles failover/checkpointing, runs independent review and stores execution/retrospective evidence.
 
-## Verification
+## Run
 ```bash
 npm install
 npm run check
+npm run company -- examples/project-brief.json --runtime config/providers.json
 ```
 
-## Not finished yet
-The repository is not yet a complete autonomous software company. Live quota/credit discovery where providers permit it, richer automatic technical task decomposition, retrospective learning, repository/commit workspace integration, and the local web dashboard still need to be connected and verified end-to-end.
+See `docs/MD-ARCHITECTURE.md` for the contract.
 
 Provider credentials must never be committed.

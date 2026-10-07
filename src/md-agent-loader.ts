@@ -1,0 +1,68 @@
+import {readFile,readdir} from "node:fs/promises";
+import {join} from "node:path";
+import {z} from "zod";
+import {SafeId} from "./ids.js";
+
+const Mode=z.enum(["maker","reviewer"]);
+const AgentMeta=z.object({
+ id:SafeId,department:z.string().min(1),mode:Mode,activation:z.string().min(1),
+ stage:z.number().int().nonnegative(),skills:z.array(SafeId).default([])
+});
+const RuleMeta=z.object({
+ requires:z.array(z.string()).default([]),optionalRequires:z.array(z.string()).default([]),
+ produces:z.array(z.string()).default([]),reviewedBy:z.string().default("none")
+});
+export type AgentDefinition=z.infer<typeof AgentMeta>&z.infer<typeof RuleMeta>&{
+ identity:string;rules:string;skillText:string[];
+};
+
+function scalar(raw:string):unknown{
+ const value=raw.trim();
+ if(value.startsWith("[")||value.startsWith("{"))return JSON.parse(value);
+ if(/^\d+$/.test(value))return Number(value);
+ if(value==="true")return true;if(value==="false")return false;
+ return value;
+}
+export function parseMarkdownFrontmatter(text:string){
+ const match=text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+ if(!match)throw new Error("Markdown file is missing frontmatter");
+ const meta:Record<string,unknown>={};
+ for(const line of match[1].split(/\r?\n/)){
+  if(!line.trim()||line.trim().startsWith("#"))continue;
+  const index=line.indexOf(":");if(index<1)throw new Error("Invalid frontmatter line: "+line);
+  meta[line.slice(0,index).trim()]=scalar(line.slice(index+1));
+ }
+ return {meta,body:match[2].trim()};
+}
+
+export class MarkdownAgentRegistry{
+ constructor(private agentsRoot="agents",private skillsRoot="skills"){}
+ async loadAgent(id:string):Promise<AgentDefinition>{
+  const dir=join(this.agentsRoot,SafeId.parse(id));
+  const [identityText,rulesText]=await Promise.all([readFile(join(dir,"IDENTITY.md"),"utf8"),readFile(join(dir,"RULES.md"),"utf8")]);
+  const identity=parseMarkdownFrontmatter(identityText),rules=parseMarkdownFrontmatter(rulesText);
+  const im=AgentMeta.parse(identity.meta),rm=RuleMeta.parse(rules.meta);
+  if(im.id!==id)throw new Error("Agent directory/id mismatch: "+id);
+  const skillText=await Promise.all(im.skills.map(skill=>readFile(join(this.skillsRoot,skill+".md"),"utf8")));
+  return {...im,...rm,identity:identity.body,rules:rules.body,skillText};
+ }
+ async loadAll(){
+  const entries=await readdir(this.agentsRoot,{withFileTypes:true});
+  const ids=entries.filter(e=>e.isDirectory()).map(e=>e.name).sort();
+  return Promise.all(ids.map(id=>this.loadAgent(id)));
+ }
+}
+
+export function activationMatches(expression:string,capabilities:string[],complexity:number){
+ if(expression==="always")return true;
+ if(expression.startsWith("complexity>="))return complexity>=Number(expression.slice("complexity>=".length));
+ if(expression.startsWith("capability:")){
+  const options=expression.slice("capability:".length).split("|").map(x=>x.trim()).filter(Boolean);
+  return options.some(x=>capabilities.includes(x));
+ }
+ throw new Error("Unsupported activation expression: "+expression);
+}
+
+export function systemPromptFor(agent:AgentDefinition,companyText="",workflowText="",qualityText=""){
+ return [companyText,workflowText,qualityText,agent.identity,agent.rules,...agent.skillText].filter(Boolean).join("\n\n---\n\n");
+}
