@@ -10,35 +10,28 @@ const Selection=z.object({
  estimatedOutputTokens:z.number().int().nonnegative().default(2000),
  maxCost:z.number().nonnegative().optional(),
  minContextWindow:z.number().int().positive().optional()
-}).refine(value=>Boolean(value.provider)===Boolean(value.model),{
- message:"provider and model must be supplied together"
-});
+}).refine(value=>Boolean(value.provider)===Boolean(value.model),{message:"provider and model must be supplied together"});
 
 const ReviewPlan=Selection.and(z.object({
- role:z.string().min(1),
- system:z.string().min(1),
+ role:z.string().min(1),system:z.string().min(1),
  maxTokens:z.number().int().positive().default(2048),
  maxRounds:z.number().int().min(1).max(5).default(2)
 }));
 
 const TaskPlan=Selection.and(z.object({
- id:SafeId,
- agentRole:z.string().min(1),
- dependencies:z.array(SafeId).default([]),
- system:z.string().min(1),
- prompt:z.string().min(1),
- inputRefs:z.array(z.string()).default([]),
- maxTokens:z.number().int().positive().default(4096),
- review:ReviewPlan.optional()
+ id:SafeId,agentRole:z.string().min(1),dependencies:z.array(SafeId).default([]),
+ system:z.string().min(1),prompt:z.string().min(1),inputRefs:z.array(z.string()).default([]),
+ maxTokens:z.number().int().positive().default(4096),review:ReviewPlan.optional()
 }));
 
 export const ProjectPlan=z.object({
  projectId:SafeId,
+ budget:z.object({
+  maxProjectCost:z.number().nonnegative().optional(),
+  maxTaskCost:z.number().nonnegative().optional(),
+  approvalThreshold:z.number().nonnegative().optional()
+ }).default({}),
  tasks:z.array(TaskPlan).min(1)
 });
-
 export type ProjectPlanValue=z.infer<typeof ProjectPlan>;
-
-export async function loadProjectPlan(path:string){
- return ProjectPlan.parse(JSON.parse(await readFile(path,"utf8")));
-}
+export async function loadProjectPlan(path:string){return ProjectPlan.parse(JSON.parse(await readFile(path,"utf8")));}
