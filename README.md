@@ -20,7 +20,7 @@ All engineering roles follow the engineering fundamentals baseline in `docs/ENGI
 - Provider capacity eligibility and cost-aware routing primitives.
 - Provider-neutral model interface and registry.
 - Persistent task checkpoints under `.companyswai/checkpoints/`.
-- Persistent per-agent execution records under `.companyswai/executions/<project>/records.jsonl`.
+- Persistent per-agent execution records under `.companyswai/executions/<project>/records.jsonl`.\n- Persistent Artifact, Decision and Handoff stores plus isolated project workspaces.\n- Capability-driven company work planner that converts a project brief into departments, roles, dependency-aware work and reviewers.
 - Task runner records STARTED/SUCCEEDED/FAILED output, token usage and writes a resumable checkpoint.
 - Core automated tests.
 
@@ -34,6 +34,6 @@ npm run check
 ```
 
 ## Not finished yet
-The repository is not yet a complete autonomous software company. Real provider adapters, live quota/credit discovery where providers permit it, multi-agent review/approval loop, project workspace tooling, CLI, and the local web dashboard still need to be connected and verified end-to-end.
+The repository is not yet a complete autonomous software company. Live quota/credit discovery where providers permit it, richer automatic technical task decomposition, retrospective learning, repository/commit workspace integration, and the local web dashboard still need to be connected and verified end-to-end.
 
 Provider credentials must never be committed.
