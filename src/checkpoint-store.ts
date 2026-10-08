@@ -1,5 +1,6 @@
-import {mkdir,readFile,writeFile} from "node:fs/promises";
-import {dirname,join} from "node:path";
+import {readFile,rename} from "node:fs/promises";
+import {join} from "node:path";
+import {writeFileAtomic} from "./fs-atomic.js";
 import {z} from "zod";
 import {SafeId} from "./ids.js";
 
@@ -18,12 +19,16 @@ export class FileCheckpointStore{
  async save(projectId:string,value:unknown){
   const checkpoint=Checkpoint.parse(value);
   const path=this.path(projectId,checkpoint.taskId);
-  await mkdir(dirname(path),{recursive:true});
-  await writeFile(path,JSON.stringify(checkpoint,null,2),"utf8");
+  await writeFileAtomic(path,JSON.stringify(checkpoint,null,2));
   return checkpoint;
  }
+ /** Checkpoints are an optimisation over the execution log, so a corrupt or truncated one is quarantined and treated as absent. */
  async load(projectId:string,taskId:string){
-  try{return Checkpoint.parse(JSON.parse(await readFile(this.path(projectId,taskId),"utf8")));}
+  const path=this.path(projectId,taskId);
+  let text:string;
+  try{text=await readFile(path,"utf8");}
   catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw error;}
+  try{return Checkpoint.parse(JSON.parse(text));}
+  catch{await rename(path,path+".corrupt").catch(()=>undefined);return undefined;}
  }
 }

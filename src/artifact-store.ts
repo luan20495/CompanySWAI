@@ -1,5 +1,6 @@
-import {mkdir,readFile,writeFile} from "node:fs/promises";
-import {dirname,join} from "node:path";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
+import {writeFileAtomic} from "./fs-atomic.js";
 import {z} from "zod";
 import {SafeId} from "./ids.js";
 
@@ -14,7 +15,7 @@ export type ArtifactValue=z.infer<typeof Artifact>;export type DecisionValue=z.i
 class JsonStore<T>{
  constructor(private root:string,private schema:z.ZodType<T>){}
  private path(projectId:string,id:string){return join(this.root,projectId,id+".json");}
- async save(projectId:string,id:string,value:unknown){const parsed=this.schema.parse(value);const path=this.path(projectId,id);await mkdir(dirname(path),{recursive:true});await writeFile(path,JSON.stringify(parsed,null,2),"utf8");return parsed;}
+ async save(projectId:string,id:string,value:unknown){const parsed=this.schema.parse(value);const path=this.path(projectId,id);await writeFileAtomic(path,JSON.stringify(parsed,null,2));return parsed;}
  async load(projectId:string,id:string){try{return this.schema.parse(JSON.parse(await readFile(this.path(projectId,id),"utf8")));}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw error;}}
 }
 export class FileArtifactStore extends JsonStore<ArtifactValue>{constructor(root=".companyswai/artifacts"){super(root,Artifact);}}

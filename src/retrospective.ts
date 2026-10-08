@@ -1,5 +1,6 @@
-import {mkdir,readFile,writeFile} from "node:fs/promises";
-import {dirname,join} from "node:path";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
+import {writeFileAtomic} from "./fs-atomic.js";
 import {z} from "zod";
 import {SafeId} from "./ids.js";
 import {baseTaskId,settledRecords,type BudgetReport} from "./budget.js";
@@ -89,6 +90,6 @@ export function renderRetrospective(retro:RetrospectiveValue,summary:Pick<Projec
 export class FileRetrospectiveStore{
  constructor(private root=".companyswai/retrospectives"){}
  private path(projectId:string){return join(this.root,SafeId.parse(projectId),"latest.json");}
- async save(value:RetrospectiveValue){const v=Retrospective.parse(value),path=this.path(v.projectId);await mkdir(dirname(path),{recursive:true});await writeFile(path,JSON.stringify(v,null,2),"utf8");return v;}
+ async save(value:RetrospectiveValue){const v=Retrospective.parse(value);await writeFileAtomic(this.path(v.projectId),JSON.stringify(v,null,2));return v;}
  async load(projectId:string){try{return Retrospective.parse(JSON.parse(await readFile(this.path(projectId),"utf8")));}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw e;}}
 }

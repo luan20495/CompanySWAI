@@ -1,5 +1,6 @@
-import {mkdir,readFile,writeFile} from "node:fs/promises";
-import {dirname,join} from "node:path";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
+import {writeFileAtomic} from "./fs-atomic.js";
 import {z} from "zod";
 import {SafeId} from "./ids.js";
 
@@ -21,14 +22,14 @@ export class FileApprovalStore{
   const existing=await this.loadRequest(projectId,taskId);
   if(existing&&existing.status==="PENDING"&&existing.estimatedCost>=estimatedCost)return existing;
   const value=ApprovalRequest.parse({projectId,taskId,estimatedCost,requestedAt:new Date().toISOString(),status:"PENDING"});
-  const path=this.requestPath(projectId,taskId);await mkdir(dirname(path),{recursive:true});await writeFile(path,JSON.stringify(value,null,2),"utf8");return value;
+  await writeFileAtomic(this.requestPath(projectId,taskId),JSON.stringify(value,null,2));return value;
  }
  async approve(projectId:string,taskId:string,estimatedCost?:number,approvedBy="owner"){
   const request=await this.loadRequest(projectId,taskId),cost=estimatedCost??request?.estimatedCost;
   if(cost==null)throw new Error("No pending approval request and no estimated cost supplied");
   const value=Approval.parse({projectId,taskId,estimatedCost:cost,approvedBy,approvedAt:new Date().toISOString()});
-  const path=this.approvalPath(projectId,taskId);await mkdir(dirname(path),{recursive:true});await writeFile(path,JSON.stringify(value,null,2),"utf8");
-  if(request){await writeFile(this.requestPath(projectId,taskId),JSON.stringify({...request,status:"APPROVED"},null,2),"utf8");}
+  await writeFileAtomic(this.approvalPath(projectId,taskId),JSON.stringify(value,null,2));
+  if(request){await writeFileAtomic(this.requestPath(projectId,taskId),JSON.stringify({...request,status:"APPROVED"},null,2));}
   return value;
  }
  async load(projectId:string,taskId:string){try{return Approval.parse(JSON.parse(await readFile(this.approvalPath(projectId,taskId),"utf8")));}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw error;}}

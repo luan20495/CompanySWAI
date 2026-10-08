@@ -1,5 +1,5 @@
-import {mkdir,readFile,writeFile} from "node:fs/promises";
-import {dirname} from "node:path";
+import {readFile} from "node:fs/promises";
+import {writeFileAtomic} from "./fs-atomic.js";
 import {z} from "zod";
 import {containsSecret} from "./secrets.js";
 import type {CandidateValue,RetrospectiveValue} from "./retrospective.js";
@@ -48,7 +48,7 @@ export class CompanyExperienceStore{
   const legacy=LegacyFile.parse(raw);
   return {version:2,items:legacy.items.map(item=>({pattern:item.lesson,scope:"company",projects:item.projects,observations:item.observations,evidence:["migrated from version 1"],status:item.status,updatedAt:item.updatedAt}))};
  }
- private async write(items:ExperienceValue[]){await mkdir(dirname(this.path),{recursive:true});await writeFile(this.path,JSON.stringify({version:2,items},null,2),"utf8");}
+ private async write(items:ExperienceValue[]){await writeFileAtomic(this.path,JSON.stringify({version:2,items},null,2));}
 
  /**
   * retrospective -> candidate -> validation -> reusable experience.
