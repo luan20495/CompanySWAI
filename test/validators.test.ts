@@ -90,6 +90,15 @@ test("QA must trace every requirement to a classified test and agree with its ow
 
 const arch=(verdict:string,categories:string,risks="None.")=>verdict+"\n\n## Evidence\nread the design\n\n## Blockers\nNone.\n\n## Architecture Review\n"+categories+"\n\n## Decisions\n- Keep the modular monolith.\n\n## Unresolved Risks\n"+risks;
 const archCtx={params:{architectureCategories:["modularity","security","failure-modes"]}};
+test("QA depth comes from the mode: deep QA demands more than one executed test per requirement",()=>{
+ const lines="- [REQ-001] -> [T-001] PASS: a | evidence: x\n- [REQ-002] -> [T-002] PASS: b | evidence: y\n- [REQ-003] -> [T-003] PASS: c | evidence: z";
+ const deep={params:{minTestsPerRequirement:2},requirementIds:["REQ-001","REQ-002","REQ-003"]};
+ assert.equal(runValidators(["qa-traceability"],qa("PASS",lines),deep).problems.filter(p=>/at least 2/.test(p)).length,3);
+ const twice="- [REQ-001] -> [T-001] PASS: a | evidence: x\n- [REQ-001] -> [T-002] PASS: a2 | evidence: x\n- [REQ-002] -> [T-003] PASS: b | evidence: y\n- [REQ-002] -> [T-004] PASS: b2 | evidence: y\n- [REQ-003] -> NOT_APPLICABLE: ops";
+ assert.deepEqual(runValidators(["qa-traceability"],qa("PASS",twice),deep).problems,[]);
+ assert.deepEqual(runValidators(["qa-traceability"],qa("PASS",lines),{...deep,params:{}}).problems,[],"standard depth accepts one test per requirement");
+});
+
 test("architecture review covers every applicable category, records decisions and risks, and FAIL forces CHANGES_REQUIRED",()=>{
  const all="- modularity: PASS — clear module boundaries\n- security: RISK — token storage unspecified\n- failure-modes: PASS — retries defined";
  assert.deepEqual(runValidators(["architecture-review"],arch("PASS",all,"- token storage unspecified"),archCtx).problems,[]);
@@ -145,10 +154,10 @@ test("end to end: connectors retrieve real documents, research cites only those,
  assert.ok(retrieved.documents.length>=2&&retrieved.documents.every(d=>/^\d{4}-\d{2}-\d{2}$/.test(d.retrieved)),"the retrieval itself is persisted for audit");
  const trace=await state.traceability.load("e2e-struct");
  assert.deepEqual(trace.requirements.map(r=>r.id),["REQ-001","REQ-002","REQ-003"]);assert.ok(trace.requirements.every(r=>r.acceptance.length>=1));
- assert.equal(trace.qa?.overall,"PASS");assert.equal(trace.tests.length,3);
+ assert.equal(trace.qa?.overall,"PASS");assert.equal(trace.tests.length,6,"MAX_QUALITY means deep QA: two executed tests per requirement");
  assert.ok(trace.architecture.length===1&&trace.architecture[0].categories.length>=5&&trace.architecture[0].verdict==="PASS");
  assert.ok(trace.decisions.length>=1&&trace.decisions[0].id==="DEC-001");assert.ok(trace.artifacts.every((a,i)=>a.id==="ART-"+String(i+1).padStart(3,"0")));
- const matrix=await state.traceability.renderMatrix("e2e-struct");assert.match(matrix,/REQ-001 \| AC-001\.1 \| T-001 \| PASS/);
+ const matrix=await state.traceability.renderMatrix("e2e-struct");assert.match(matrix,/REQ-001 \| AC-001\.1 \| T-001, T-002 \| PASS, PASS/);
  assert.match(await state.memory.read("e2e-struct","QA.md"),/Overall QA: PASS/);
 });
 

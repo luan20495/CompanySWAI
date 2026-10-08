@@ -81,9 +81,9 @@ const qaTraceability:Validator=(text,ctx)=>{
  for(const line of parsed.malformed)problems.push("malformed traceability line: "+line.slice(0,120));
  if(!parsed.overall)problems.push("## QA Status must start with one of "+QA_STATUSES.join("|"));
  if(!parsed.tests.length)problems.push("## Traceability links no requirement to any test result");
- const covered=new Set<string>(),testIds=new Set<string>();
+ const covered=new Set<string>(),testIds=new Set<string>(),perRequirement=new Map<string,number>();
  for(const test of parsed.tests){
-  covered.add(test.requirementId);
+  covered.add(test.requirementId);if(test.status==="PASS"||test.status==="FAIL")perRequirement.set(test.requirementId,(perRequirement.get(test.requirementId)??0)+1);
   if(known.size&&!known.has(test.requirementId))problems.push("traceability references unknown requirement "+test.requirementId);
   if(test.testId){if(testIds.has(test.testId))problems.push("duplicate test id "+test.testId);testIds.add(test.testId);}
   else if(test.status!=="NOT_APPLICABLE")problems.push(test.requirementId+" "+test.status+" needs a test id ([T-001])");
@@ -91,6 +91,8 @@ const qaTraceability:Validator=(text,ctx)=>{
  }
  if(known.size){for(const id of known)if(!covered.has(id))problems.push("requirement "+id+" has no test or NOT_APPLICABLE/BLOCKED classification");}
  else notes.push("no requirement IDs were available to check coverage");
+ const minTests=Number(ctx.params.minTestsPerRequirement??1);
+ if(minTests>1)for(const [id,count] of perRequirement)if(count<minTests)problems.push("requirement "+id+" has "+count+" executed test(s); this QA depth requires at least "+minTests);
  if(parsed.overall&&parsed.tests.length){
   const implied=impliedQaStatus(parsed.tests);
   if(parsed.overall!==implied)problems.push("## QA Status says "+parsed.overall+" but the individual results imply "+implied);

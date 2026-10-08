@@ -33,7 +33,8 @@ function sectionBody(title:string,request:ModelRequest):string{
   case "QA Status":return "PASS — every requirement has a passing dry-run check.";
   case "Traceability":{
    const ids=meta?.requirementIds?.length?meta.requirementIds:["REQ-001","REQ-002","REQ-003"];
-   return ids.map((id,i)=>"- ["+id+"] -> [T-"+String(i+1).padStart(3,"0")+"] PASS: dry-run check for "+id+" | evidence: deterministic fixture").join("\n");
+   const per=Number(params.minTestsPerRequirement??1);let n=0;
+   return ids.flatMap(id=>Array.from({length:per},(_,k)=>"- ["+id+"] -> [T-"+String(++n).padStart(3,"0")+"] PASS: dry-run check "+(k+1)+" for "+id+" | evidence: deterministic fixture")).join("\n");
   }
   case "Architecture Review":return ((params.architectureCategories as string[]|undefined)??[]).map(c=>"- "+c+": PASS — adequate for the dry-run project").join("\n")||"- modularity: PASS — adequate";
   case "Unresolved Risks":return "None.";

@@ -4,6 +4,11 @@ levels: {
  "CRITICAL":{"reviewers":2,"gates":[]},
  "HIGH_RISK":{"reviewers":2,"gates":["checks","qa","security"]}
 }
+qaDepth: {
+ "light":{"minTests":1,"guidance":"Light QA: cover each requirement with at least one test of its main acceptance criterion."},
+ "standard":{"minTests":1,"guidance":"Standard QA: cover every acceptance criterion of every requirement and the main regression risks."},
+ "deep":{"minTests":2,"guidance":"Deep QA: at least two independent tests per requirement (a normal case and a failure/boundary case), integration boundaries, regression risks and security- and performance-relevant behaviour where the project signals them."}
+}
 modes: {
  "FAST":{
   "reviewRisks":["high","critical"],

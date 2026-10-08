@@ -62,6 +62,8 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
   const picked=selectSkills(dynamic,agent.id,signals),skillBodies=picked.map(s=>s.body);
   const contract:Contract={sections:[...md.contract.sections,...agent.extraSections],verdict:false,validators:[...agent.validators],params:{externalResearch:brief.research.enabled&&brief.research.connectors.length>0,maxSourceAgeDays:brief.research.maxSourceAgeDays,workspaceConfigured:Boolean(brief.workspacePath)}};
   if(agent.deliversCode&&brief.workspacePath&&!contract.validators.includes("code-delivery"))contract.validators.push("code-delivery");
+  const qaDepth=md.policy.qaDepth[mode.qa];
+  if(contract.validators.includes("qa-traceability"))contract.params.minTestsPerRequirement=qaDepth.minTests;
   const reviewerAgent=agent.reviewedBy!=="none"?agents.find(a=>a.id===agent.reviewedBy&&a.mode==="reviewer"):undefined;
   const decision=reviewerAgent?reviewDecision(md.policy,brief.mode,risk):undefined;
   let review:PlannedReview|undefined;
@@ -84,7 +86,7 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
    review={role:reviewerAgent.id,department:reviewerAgent.department,level:decision.level,reviewers:decision.reviewers,gates:decision.gates,system:slots[0].system,capabilities:reviewerAgent.modelCapabilities,contract:slots[0].contract,slots,skills:reviewSkills.map(s=>s.name)};
   }
   tasks.push({
-   id:agent.id,department:agent.department,agentRole:agent.id,dependencies:[...deps],objective:brief.objective+"\n\nAssigned responsibility: "+agent.identity.split(/\r?\n/)[0],
+   id:agent.id,department:agent.department,agentRole:agent.id,dependencies:[...deps],objective:brief.objective+"\n\nAssigned responsibility: "+agent.identity.split(/\r?\n/)[0]+(contract.validators.includes("qa-traceability")?"\n\n"+qaDepth.guidance:""),
    reviewer:review?.role,risk,system:systemPromptFor(agent,md.company,md.workflow,md.quality,md.contractText,skillBodies),produces:agent.produces,requires:agent.requires,
    capabilities:agent.modelCapabilities,contract,skills:picked.map(s=>s.name),requiredGates:agent.deliversCode?requiredGates:[],deliversCode:agent.deliversCode,review
   });

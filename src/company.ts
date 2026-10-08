@@ -37,6 +37,7 @@ export const RoutingPolicy=z.enum(["QUALITY_FIRST","BALANCED","COST_FIRST","LOCA
 export type RoutingPolicyValue=z.infer<typeof RoutingPolicy>;
 const PolicyMeta=z.object({
  levels:z.record(ReviewLevel,z.object({reviewers:z.number().int().min(1).max(3),gates:z.array(z.string())})),
+ qaDepth:z.record(z.enum(["light","standard","deep"]),z.object({minTests:z.number().int().min(1),guidance:z.string().min(1)})),
  modes:z.record(QualityMode,z.object({
   reviewRisks:z.array(Risk),levelByRisk:z.partialRecord(Risk,ReviewLevel),routing:RoutingPolicy,
   minQualityTier:z.number().int().min(1).max(5),requiredGates:z.array(z.string()),qa:z.enum(["light","standard","deep"])
