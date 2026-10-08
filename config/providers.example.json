@@ -1,20 +1,26 @@
 {
   "providers":[
     {
+      "id":"anthropic-primary",
       "provider":"anthropic",
       "model":"claude-sonnet-4-5",
+      "credentialEnv":"ANTHROPIC_API_KEY",
       "state":"AVAILABLE",
-      "capabilities":["reasoning","product","review","architecture","coding"],
+      "capabilities":["reasoning","product","architecture","coding","design","deployment","testing","review"],
       "contextWindow":200000,
-      "maxConcurrency":2
+      "maxConcurrency":2,
+      "estimatedTokensPerSecond":50
     },
     {
+      "id":"openrouter-backup",
       "provider":"openrouter",
       "model":"anthropic/claude-sonnet-4.5",
+      "credentialEnv":"OPENROUTER_API_KEY",
       "state":"AVAILABLE",
-      "capabilities":["reasoning","product","review","architecture","coding"],
+      "capabilities":["reasoning","product","architecture","coding","design","deployment","testing","review"],
       "contextWindow":200000,
-      "maxConcurrency":2
+      "maxConcurrency":2,
+      "estimatedTokensPerSecond":50
     }
   ]
 }

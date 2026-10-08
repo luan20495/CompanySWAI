@@ -1,5 +1,9 @@
 export type ProviderState="AVAILABLE"|"QUOTA_LOW"|"RATE_LIMITED"|"OUT_OF_CREDIT"|"UNAVAILABLE";
-export type CapacityProfile={provider:string;model:string;state:ProviderState;capabilities:string[];contextWindow:number;inputCostPerMillion?:number;outputCostPerMillion?:number;creditRemaining?:number;tokenQuotaRemaining?:number;resetAt?:string;maxConcurrency:number};
+export type CapacityProfile={
+ id?:string;provider:string;model:string;state:ProviderState;capabilities:string[];contextWindow:number;
+ inputCostPerMillion?:number;outputCostPerMillion?:number;creditRemaining?:number;tokenQuotaRemaining?:number;
+ resetAt?:string;maxConcurrency:number;estimatedTokensPerSecond?:number;
+};
 export type TaskDemand={capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number};
 export function estimateCost(p:CapacityProfile,d:TaskDemand){if(p.inputCostPerMillion==null||p.outputCostPerMillion==null)return undefined;return d.estimatedInputTokens/1e6*p.inputCostPerMillion+d.estimatedOutputTokens/1e6*p.outputCostPerMillion;}
 export function eligible(p:CapacityProfile,d:TaskDemand){if(p.state!=="AVAILABLE"&&p.state!=="QUOTA_LOW")return false;if((d.minContextWindow??0)>p.contextWindow)return false;if(!d.capabilities.every(c=>p.capabilities.includes(c)))return false;const total=d.estimatedInputTokens+d.estimatedOutputTokens;if(p.tokenQuotaRemaining!=null&&p.tokenQuotaRemaining<total)return false;const cost=estimateCost(p,d);if(cost!=null&&p.creditRemaining!=null&&p.creditRemaining<cost)return false;if(cost!=null&&d.maxCost!=null&&cost>d.maxCost)return false;return true;}
