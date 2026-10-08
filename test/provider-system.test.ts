@@ -9,6 +9,7 @@ import {classifyProviderError,createCapacitySelector} from "../src/provider-sele
 import {createProviderRegistry,loadRuntime,loadRuntimeConfig} from "../src/runtime.js";
 import {clearRegisteredSecrets,containsSecret,redact,registerSecret,sanitizedEnv} from "../src/secrets.js";
 import {KeyedSemaphore} from "../src/semaphore.js";
+import {fakeAnthropicKey,fakeOpenRouterKey,fakePrivateKey} from "./helpers.js";
 
 const demand={capabilities:["coding"],estimatedInputTokens:100,estimatedOutputTokens:100};
 const profile=(id:string,extra:Partial<CapacityProfile>={}):CapacityProfile=>({id,provider:"p",model:"m",state:"AVAILABLE",capabilities:["coding"],contextWindow:10000,maxConcurrency:1,...extra});
@@ -87,12 +88,12 @@ test("loadRuntime skips profiles without credentials and never echoes credential
  const dir=await mkdtemp(join(tmpdir(),"companyswai-runtime-")),path=join(dir,"p.json");
  const base={model:"m",capabilities:["coding"],contextWindow:1000};
  await writeFile(path,JSON.stringify({providers:[{...base,id:"live",provider:"openrouter",credentialEnv:"CSWAI_TEST_LIVE"},{...base,id:"dead",provider:"anthropic",credentialEnv:"CSWAI_TEST_DEAD"}]}));
- process.env.CSWAI_TEST_LIVE="sk-or-live-secret-value-123456";delete process.env.CSWAI_TEST_DEAD;
+ process.env.CSWAI_TEST_LIVE=fakeOpenRouterKey();delete process.env.CSWAI_TEST_DEAD;
  try{
   const runtime=await loadRuntime(path);
   assert.deepEqual(runtime.profiles.map(p=>p.id),["live"]);assert.deepEqual(runtime.skipped,[{id:"dead",missing:"CSWAI_TEST_DEAD"}]);
   assert.ok(!JSON.stringify(runtime.profiles).includes("secret-value"));
-  assert.equal(redact("failed with key sk-or-live-secret-value-123456 here"),"failed with key [REDACTED] here");
+  assert.equal(redact("failed with key "+fakeOpenRouterKey()+" here"),"failed with key [REDACTED] here");
   delete process.env.CSWAI_TEST_LIVE;
   await assert.rejects(()=>loadRuntime(path),error=>error instanceof Error&&/CSWAI_TEST_LIVE/.test(error.message)&&!/secret-value/.test(error.message));
  }finally{delete process.env.CSWAI_TEST_LIVE;clearRegisteredSecrets();}
@@ -100,8 +101,8 @@ test("loadRuntime skips profiles without credentials and never echoes credential
 
 test("secret redaction covers token shapes, registered values and agent-visible environments",()=>{
  clearRegisteredSecrets();
- assert.equal(redact("key sk-ant-api03-abcdefghij1234567890 ok"),"key [REDACTED] ok");
- assert.ok(containsSecret("-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----"));
+ assert.equal(redact("key "+fakeAnthropicKey()+" ok"),"key [REDACTED] ok");
+ assert.ok(containsSecret(fakePrivateKey()));
  assert.ok(!containsSecret("plain documentation text with api_key placeholder"));
  registerSecret("hunter2-custom-value");
  assert.equal(redact("pw hunter2-custom-value"),"pw [REDACTED]");

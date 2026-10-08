@@ -1,49 +1,55 @@
 # CompanySWAI
 
-CompanySWAI is a lightweight local **MD-driven AI software company**. Markdown defines the company, 11 core agents, rules, skills, dependencies and quality gates; TypeScript is the execution engine.
+A local, **MD-first AI software company**. Markdown defines the company, its 11 core agents, their rules, skills, dependencies, output contract and quality gates. TypeScript is only the engine: parsing, validation, orchestration, provider routing, budget, checkpoints, resume, review, persistence and repo operations.
 
-## Core model
-- `company/*.md`: company principles, workflow and quality gates.
-- `agents/<agent>/IDENTITY.md`: role, activation and skills.
-- `agents/<agent>/RULES.md`: required/produced artifacts, reviewer and DONE rules.
-- `skills/*.md`: reusable context loaded only when referenced.
-- `.companyswai/projects/<project>/`: readable project memory: PLAN, REQUIREMENTS, ARCHITECTURE, DECISIONS, HANDOFFS, REVIEWS, QA and STATUS.
+## The Markdown that defines the company
+| Path | Defines |
+|---|---|
+| `agents/AGENTS.md` | the authoritative list of the 11 agents |
+| `agents/<agent>/IDENTITY.md` | role, department, activation, skills, provider capabilities |
+| `agents/<agent>/RULES.md` | required/produced artifacts, reviewer, Done conditions |
+| `skills/*.md` | shared skills, loaded only into agents that declare them |
+| `company/*.md` | principles, workflow, quality gates, **output contract**, **memory routing** |
 
-The 11 core agents are Product Lead, Business Analyst, Researcher, Tech Lead, Backend Engineer, Frontend Engineer, Mobile Engineer, UX/UI Designer, Independent Reviewer, QA Engineer and DevOps/SRE. Only relevant agents are activated.
+Agents: product-lead, business-analyst, researcher, tech-lead, backend-engineer, frontend-engineer, mobile-engineer, ux-ui-designer, reviewer, qa-engineer, devops-sre. Only the ones a project needs are activated. See `docs/MD-ARCHITECTURE.md`.
 
-## Runtime
-The runtime parses/validates Markdown, resolves artifact dependencies, routes providers, enforces budget/approval/concurrency, persists checkpoints, resumes completed work safely, performs review/revision, records artifacts/decisions/handoffs, can apply confined ```file` patches to an explicitly configured local workspace, run deterministic checks, optionally commit successful changes, and reuse retrospective lessons on later runs.
-
-## Verify
+## Quick start
 ```bash
-npm install
-npm run check
+npm ci
+npm run check      # typecheck + tests
+npm run doctor     # structural + secret checks of the Markdown company and config
+npm run company -- examples/project-brief.json --dry-run   # deterministic end-to-end run, no API key
 ```
 
-## Deterministic end-to-end demo
-No API key is required:
-```bash
-npm run company -- examples/project-brief.json --dry-run
-```
+## Running for real
+1. `cp config/providers.example.json config/providers.json` (git-ignored) and edit profiles. Each profile names its own `credentialEnv`; export those variables (or put them in a git-ignored `.env`). Provider kinds: `anthropic`, `openrouter`, `openai-compatible` (needs `baseUrl`). Prices (`inputCostPerMillion`/`outputCostPerMillion`) are required for budget enforcement.
+2. `npm run company -- examples/project-brief.json --runtime config/providers.json`
 
-## Live run
-Create `config/providers.json` from the example, set credentials in environment variables, then:
-```bash
-npm run company -- examples/project-brief.json --runtime config/providers.json
-```
+`npm run company` and `npm run resume` are the same command and accept a **brief** (compiled from the Markdown company) or a **plan** (`examples/project-plan.json`). Re-running resumes; see `docs/ORCHESTRATION.md`.
+
+Flags: `--dry-run`, `--runtime <file>`, `--state-dir <dir>` (default `.companyswai`), `--wait-approval[=seconds]`.
+Exit codes: `0` all done, `1` a task failed, `2` parked (capacity, approval or blocked dependents) — fix and rerun.
+
+Other commands: `npm run estimate -- <brief> [--runtime file]` (cost/time/capacity estimate vs budget), `npm run approve -- <project> <task> [cost] [by]`, `npm run status -- <project> [port] [stateDir]` (loopback JSON API; no UI required).
+
+## What gets persisted (`.companyswai/`, git-ignored)
+- `projects/<project>/`: `PLAN.md REQUIREMENTS.md ARCHITECTURE.md DECISIONS.md HANDOFFS.md REVIEWS.md BLOCKERS.md QA.md STATUS.md RETROSPECTIVE.md`, updated automatically
+- `executions/`, `checkpoints/`, `approvals/`: resume state; `artifacts/ decisions/ handoffs/ reviews/ blockers/`: structured records
+- `retrospectives/`, `company-experience.json`: the learning loop (`docs/MEMORY-AND-LEARNING.md`)
+
+## Output contract
+Every maker answers with `## Deliverables`, `## Decisions`, `## Evidence`, `## Blockers`, `## Handoff`; reviewers start with `PASS` or `CHANGES_REQUIRED`. A non-compliant response is sent back once for repair, then fails the attempt. Defined only in `company/OUTPUT-CONTRACT.md`.
 
 ## Optional real code workspace
-Add these fields to a project brief:
+Add to a project brief:
 ```json
 {
   "workspacePath": "/absolute/path/to/your/local/repo",
-  "checks": [
-    {"cmd": "npm", "args": ["test"]},
-    {"cmd": "npm", "args": ["run", "typecheck"]}
-  ],
+  "checks": [{"cmd": "npm", "args": ["test"], "timeoutMs": 300000}],
   "autoCommit": false
 }
 ```
-The model may emit ```file relative/path` blocks. Paths are confined to `workspacePath`; configured checks must pass before the task is accepted. Set `autoCommit` only when you explicitly want CompanySWAI to commit successful task changes.
+Agents emit ```` ```file relative/path ```` blocks. Patches are confined to the workspace, applied transactionally, checked deterministically (without provider credentials in the environment), rolled back on failure and, with `autoCommit`, committed path-scoped. Records include changed files, commit SHA and check evidence.
 
-See `docs/MD-ARCHITECTURE.md`. Provider credentials must never be committed.
+## Safety
+Credentials are read from the environment only, redacted from everything persisted, and withheld from check commands. `npm run doctor` scans tracked files for credential-shaped strings. Never commit `config/providers.json` or `.env`.

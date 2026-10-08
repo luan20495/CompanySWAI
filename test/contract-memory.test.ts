@@ -8,7 +8,7 @@ import {MEMORY_FILES} from "../src/project-memory.js";
 import {compileBriefToProjectPlan} from "../src/plan-compiler.js";
 import {condense,contractViolations,parseAgentOutput,section} from "../src/output-parser.js";
 import {MarkdownAgentRegistry} from "../src/md-agent-loader.js";
-import {compliant,isReviewRequest,pass,plan,reviewer,selectorFor,task,tmpState,usage} from "./helpers.js";
+import {compliant,fakeAnthropicKey,isReviewRequest,pass,plan,reviewer,selectorFor,task,tmpState,usage} from "./helpers.js";
 
 const sections=["Deliverables","Decisions","Evidence","Blockers","Handoff"];
 
@@ -93,7 +93,7 @@ test("memory writes are idempotent so recovery never duplicates entries",async()
  const state=await tmpState();await state.memory.init(plan("idem",[task("a")]));
  await state.memory.recordDecision("idem","a","exec-1","Use Postgres.");await state.memory.recordDecision("idem","a","exec-1","Use Postgres.");
  assert.equal((await state.memory.read("idem","DECISIONS.md")).match(/Use Postgres/g)?.length,1);
- await state.memory.recordStatus("idem","a","X","token sk-ant-api03-abcdefghij1234567890");
+ await state.memory.recordStatus("idem","a","X","token "+fakeAnthropicKey());
  assert.doesNotMatch(await state.memory.read("idem","STATUS.md"),/abcdefghij/);
 });
 

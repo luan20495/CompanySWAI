@@ -5,6 +5,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {CompanyExperienceStore,specificityProblem} from "../src/company-experience.js";
 import {PATTERNS,Retrospective,type CandidateValue} from "../src/retrospective.js";
+import {fakeAnthropicKey} from "./helpers.js";
 
 const retro=(projectId:string,candidates:CandidateValue[],extra:Record<string,unknown>={})=>Retrospective.parse({projectId,createdAt:new Date().toISOString(),totalRuns:1,failures:0,paused:1,inputTokens:1,outputTokens:1,actualCost:0,lessons:candidates.map(c=>c.pattern),candidates,...extra});
 const capacity:CandidateValue={pattern:PATTERNS.capacity,scope:"company",evidence:["1 capacity pause(s)"]};
@@ -27,7 +28,7 @@ test("project-specific facts are rejected and never promoted, no matter how ofte
   {pattern:"See https://internal.example.com/runbook for steps",scope:"company",evidence:["x"]},
   {pattern:"Budget for the migration is $12000 per quarter",scope:"company",evidence:["x"]},
   {pattern:"Ask ops@example.com for the key",scope:"company",evidence:["x"]},
-  {pattern:"Use key sk-ant-api03-abcdefghij1234567890 for staging",scope:"company",evidence:["x"]}
+  {pattern:"Use key "+fakeAnthropicKey()+" for staging",scope:"company",evidence:["x"]}
  ];
  for(const project of ["acme-shop","p2","p3"])await s.observe(retro(project,specific));
  assert.deepEqual(await s.validatedLessons(),[]);

@@ -5,6 +5,7 @@ import {execFileSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {LocalRepoWorkspace,WorkspaceError,parseFilePatches} from "../src/repo-workspace.js";
+import {fakeAnthropicKey} from "./helpers.js";
 
 const git=(cwd:string,...args:string[])=>execFileSync("git",args,{cwd,encoding:"utf8"}).trim();
 async function repo(){
@@ -44,7 +45,7 @@ test("a check that exceeds its timeout fails the transaction and rolls back",asy
 });
 
 test("deterministic checks run without provider credentials in their environment",async()=>{
- const root=await repo(),ws=new LocalRepoWorkspace(root);process.env.ANTHROPIC_API_KEY="sk-ant-should-not-leak-1234567890";
+ const root=await repo(),ws=new LocalRepoWorkspace(root);process.env.ANTHROPIC_API_KEY=fakeAnthropicKey();
  try{
   const result=await ws.transaction([{path:"e.txt",content:"x"}],[{cmd:"node",args:["-e","process.exit(process.env.ANTHROPIC_API_KEY?3:0)"]}]);
   assert.equal(result.checks[0].exitCode,0);
@@ -83,7 +84,7 @@ test("a failing commit hook rolls the files back",async()=>{
 
 test("patches containing credentials or duplicate targets are rejected before writing",async()=>{
  const root=await repo(),ws=new LocalRepoWorkspace(root);
- await assert.rejects(()=>ws.transaction([{path:"k.txt",content:"key=sk-ant-api03-abcdefghij1234567890"}]),fail("SECRET_IN_PATCH"));
+ await assert.rejects(()=>ws.transaction([{path:"k.txt",content:"key="+fakeAnthropicKey()}]),fail("SECRET_IN_PATCH"));
  await assert.rejects(()=>ws.transaction([{path:"d.txt",content:"1"},{path:"./d.txt",content:"2"}]),fail("UNSAFE_PATH"));
  const repeated=await ws.transaction([{path:"r.txt",content:"same"},{path:"./r.txt",content:"same"}]);
  assert.deepEqual(repeated.changedFiles,["r.txt"]);

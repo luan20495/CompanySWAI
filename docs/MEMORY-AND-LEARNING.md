@@ -1,16 +1,14 @@
 # Memory and organizational learning
 
-## Project Memory
-Project-specific facts remain isolated under `.companyswai/projects/<project>/` and project retrospective storage. They are not automatically treated as universal company rules.
+## Project memory
+Readable Markdown under `.companyswai/projects/<project>/`, written automatically and idempotently: `PLAN.md` (task checklist with state), `REQUIREMENTS.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `HANDOFFS.md`, `REVIEWS.md`, `BLOCKERS.md`, `QA.md`, `STATUS.md`, `RETROSPECTIVE.md`. Routing of outputs to files is declared in `company/MEMORY.md`. Structured JSON records (artifacts, decisions, handoffs, reviews, blockers) sit beside them and the execution log stays the resume source of truth.
 
-## Company Experience
-Only reusable execution lessons are eligible for cross-project promotion. CompanySWAI stores these in `.companyswai/company-experience.json`.
+Project memory is project scoped. Project-specific facts are never promoted globally.
 
-## Promotion
-1. A retrospective emits generic execution lessons.
-2. The lesson enters Company Experience as `CANDIDATE`.
-3. The same lesson must be observed in at least two distinct projects before becoming `VALIDATED`.
-4. Only validated lessons are injected into future plans across projects.
-5. Project-specific requirements, product decisions, secrets and domain data are never promoted by this mechanism.
+## Learning loop
+1. **Retrospective** (every run end): the run produces project-local lessons (fed back only to the same project) and generic *candidates* with evidence — failures, capacity pauses, cost drift, repeated revisions of one role, contract violations.
+2. **Candidate**: stored in `.companyswai/company-experience.json` with the projects that observed it.
+3. **Validation**: a candidate is rejected if it looks project-specific (mentions a project id, URL, email, file path, specific figures, a credential, or an unknown role). Otherwise it is `VALIDATED` only after independent observation in two distinct projects.
+4. **Reuse**: validated lessons are injected into later plans — company-scoped ones into every agent, `role:<id>` ones only into that role. Rejected and candidate items are never injected. Dry runs never contribute.
 
-This is deliberately conservative: one successful or failed project is not enough to rewrite company behaviour.
+Validated lessons carry their evidence and can be removed by editing the experience file; nothing rewrites agent Markdown automatically.

@@ -17,3 +17,10 @@ test("project estimate explains missing capability",()=>{
  const plan:any={projectId:"p",budget:{},tasks:[{id:"a",agentRole:"dev",dependencies:[],system:"s",prompt:"p",inputRefs:[],maxTokens:10,capabilities:["gpu"],estimatedInputTokens:1,estimatedOutputTokens:1}]};
  const out=estimateProject(plan,[{provider:"x",model:"m",state:"AVAILABLE",capabilities:["coding"],contextWindow:100,maxConcurrency:1}]);assert.equal(out.blockedTasks.length,1);assert.match(out.blockedTasks[0].issues.join(" "),/required capabilities/);
 });
+test("project estimate compares total known cost with the project budget",()=>{
+ const plan:any={projectId:"p",budget:{maxProjectCost:0.0001},tasks:[{id:"a",agentRole:"dev",dependencies:[],system:"s",prompt:"p",inputRefs:[],maxTokens:10,capabilities:["coding"],estimatedInputTokens:100000,estimatedOutputTokens:100000}]};
+ const profile:any={id:"x",provider:"x",model:"m",state:"AVAILABLE",capabilities:["coding"],contextWindow:1000000,inputCostPerMillion:1,outputCostPerMillion:1,maxConcurrency:1};
+ assert.equal(estimateProject(plan,[profile]).budget.withinBudget,false);
+ assert.equal(estimateProject({...plan,budget:{maxProjectCost:5}},[profile]).budget.withinBudget,true);
+ assert.equal(estimateProject({...plan,budget:{}},[profile]).budget.withinBudget,true);
+});

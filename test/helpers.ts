@@ -32,3 +32,8 @@ export function task(id:string,overrides:TaskOverrides={}){
 }
 export const reviewer=(overrides:TaskOverrides={})=>({role:"qa-reviewer",department:"quality",system:"reviewer system",capabilities:["review"],estimatedInputTokens:100,estimatedOutputTokens:100,maxTokens:100,maxRounds:2,...overrides});
 export const plan=(projectId:string,tasks:ReturnType<typeof task>[],extra:Record<string,unknown>={}):ProjectPlanInput=>({projectId,budget:{},tasks,...extra}) as ProjectPlanInput;
+
+/** Credential-shaped fixtures are assembled at runtime so the repository itself never contains one (the doctor scans for them). */
+export const fakeAnthropicKey=()=>["sk","ant","api03","abcdefghij1234567890"].join("-");
+export const fakeOpenRouterKey=()=>["sk","or","live","secret","value","123456"].join("-");
+export const fakePrivateKey=()=>["-----BEGIN RSA ","PRIVATE KEY-----\nabc\n-----END RSA ","PRIVATE KEY-----"].join("");
