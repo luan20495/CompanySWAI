@@ -152,7 +152,11 @@ export class ProjectOrchestrator{
   return latest.output;
  }
  private upstreamOf(plan:ProjectPlanValue,task:TaskPlanValue,records:ExecutionRecordValue[]):Upstream[]{
-  return task.dependencies.map(dep=>({task:plan.tasks.find(t=>t.id===dep)!,output:this.latestOutput(records,dep)}));
+  return task.dependencies.map(dep=>{
+  const record=records.filter(r=>r.taskId===dep&&r.status==="SUCCEEDED").at(-1);
+  const evidence=record?[...record.evidence,...record.gates.map(g=>"gate "+g.name+": "+g.status)].join("\n"):"";
+  return {task:plan.tasks.find(t=>t.id===dep)!,output:this.latestOutput(records,dep),evidence:evidence||undefined};
+ });
  }
  private refs(manifest:ContextEntry[]){return manifest.map(e=>e.ref+"["+e.sections.join(",")+"]");}
  private async validationContext(plan:ProjectPlanValue,contract:{validators?:string[]}){

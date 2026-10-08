@@ -35,14 +35,16 @@ export function sectionsExcept(output:string,excluded:string[]=[]){
 const render=(parts:Array<{title:string;body:string}>,limit:number)=>clip(parts.map(p=>p.title?"## "+p.title+"\n"+p.body:p.body).join("\n\n"),limit);
 const titlesOf=(parts:Array<{title:string}>)=>parts.map(p=>p.title).filter(Boolean);
 
-export type Upstream={task:TaskPlanValue;output:string};
+/** `evidence` is the runtime's own record of what was executed for that task (gate results and check output). */
+export type Upstream={task:TaskPlanValue;output:string;evidence?:string};
 
 export function makerContext(task:TaskPlanValue,upstream:Upstream[],limit:number):BuiltContext{
  if(!upstream.length)return {prompt:task.prompt,manifest:[]};
  const manifest:ContextEntry[]=[],blocks:string[]=[];
  for(const dep of upstream){
   const parts=sectionsExcept(dep.output,["Evidence"]),body=render(parts,limit);
-  blocks.push("UPSTREAM "+dep.task.id+"\n"+body);manifest.push({ref:"artifact:"+dep.task.id,sections:titlesOf(parts),chars:body.length});
+  const extra=task.contract.params.includeUpstreamEvidence===true&&dep.evidence?"\n\n--- RUNTIME TEST EVIDENCE FOR "+dep.task.id+" (executed by the runtime, not by its author) ---\n"+clip(dep.evidence,limit):"";
+  blocks.push("UPSTREAM "+dep.task.id+"\n"+body+extra);manifest.push({ref:"artifact:"+dep.task.id,sections:[...titlesOf(parts),...(extra?["runtime-evidence"]:[])],chars:body.length+extra.length});
  }
  return {prompt:task.prompt+"\n\n--- UPSTREAM ARTIFACTS ---\n"+blocks.join("\n\n"),manifest};
 }

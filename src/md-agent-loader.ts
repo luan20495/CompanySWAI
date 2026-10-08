@@ -19,7 +19,9 @@ const RuleMeta=z.object({
  /** Extra `## Section` headings this agent must emit on top of the company output contract. */
  extraSections:z.array(z.string()).default([]),
  /** True for agents whose deliverable is code in the project workspace (code gates apply). */
- deliversCode:z.boolean().default(false)
+ deliversCode:z.boolean().default(false),
+ /** True for agents (QA) that must see the runtime's executed test/gate evidence of their upstream tasks. */
+ consumesTestEvidence:z.boolean().default(false)
 });
 const ManifestMeta=z.object({agents:z.array(SafeId).length(11)});
 export type AgentDefinition=z.infer<typeof AgentMeta>&z.infer<typeof RuleMeta>&{identity:string;rules:string;skillText:string[]};

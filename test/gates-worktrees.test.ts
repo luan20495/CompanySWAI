@@ -163,3 +163,15 @@ test("gate repair is bounded: code that never passes ends as a recorded failure"
  const summary=await new ProjectOrchestrator(selector,state,{maxGateRepairs:2}).run(plan("rp2",[task("impl",{requiredGates:["typecheck"]})],{workspace}));
  assert.deepEqual(summary.failed,["impl"]);assert.equal(calls,3,"original attempt + two repairs");assert.equal(existsSync(join(root,"src/a.ts")),false);assert.equal(git(root,"status","--porcelain"),"");
 });
+
+test("QA is shown the runtime's executed gate and test output for the work it verifies; other consumers are not",async()=>{
+ const root=await repo(),state=await tmpState(),prompts:Record<string,string>={};
+ const printTests=node("console.log('TAP version 13\\n# tests 3\\n# pass 3\\n# fail 0')");
+ const workspace={path:root,checks:[],gates:{"unit-tests":[printTests]},autoCommit:true};
+ const qaContract={sections:["Deliverables","Decisions","Evidence","Blockers","Handoff"],verdict:false,validators:[],params:{includeUpstreamEvidence:true}};
+ const selector=selectorFor(request=>{const who=request.prompt.split(" ")[0];prompts[who]=request.prompt;return usage(who==="impl"?block("src/a.ts","export const a=1;"):block(who+"-notes.md","ok"));});
+ const summary=await new ProjectOrchestrator(selector,state).run(plan("qe",[task("impl",{prompt:"impl work",requiredGates:["unit-tests"]}),task("qa",{prompt:"qa work",dependencies:["impl"],contract:qaContract}),task("docs",{prompt:"docs work",dependencies:["impl"]})],{workspace}));
+ assert.deepEqual(summary.completed.sort(),["docs","impl","qa"]);
+ assert.match(prompts.qa,/RUNTIME TEST EVIDENCE FOR impl[\s\S]*# tests 3[\s\S]*# pass 3/);assert.match(prompts.qa,/gate unit-tests: PASS/);
+ assert.doesNotMatch(prompts.docs,/RUNTIME TEST EVIDENCE/);
+});

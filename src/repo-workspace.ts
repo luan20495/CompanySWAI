@@ -157,7 +157,7 @@ export class LocalRepoWorkspace{
    }
   }catch(error){await rollback();throw error;}
   const results=gateResults.flatMap(g=>g.checks);
-  return {written:patches.map(p=>p.path),changedFiles:changed,commitSha,evidence:gateResults.flatMap(g=>g.checks.map(c=>"gate "+g.name+" "+describeCheck(c))),checks:results,gates:gateResults};
+  return {written:patches.map(p=>p.path),changedFiles:changed,commitSha,evidence:gateResults.flatMap(g=>g.checks.flatMap(c=>["gate "+g.name+" "+describeCheck(c),...(c.output.trim()?["gate "+g.name+" output:\n"+c.output.trim().slice(-1200)]:[])])),checks:results,gates:gateResults};
  }
 }
 export const describeCheck=(r:CheckResult)=>"check: "+[r.cmd,...r.args].join(" ")+" → exit "+r.exitCode+" ("+r.durationMs+"ms)";

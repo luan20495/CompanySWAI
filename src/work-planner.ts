@@ -62,6 +62,7 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
   const picked=selectSkills(dynamic,agent.id,signals),skillBodies=picked.map(s=>s.body);
   const contract:Contract={sections:[...md.contract.sections,...agent.extraSections],verdict:false,validators:[...agent.validators],params:{externalResearch:brief.research.enabled&&brief.research.connectors.length>0,maxSourceAgeDays:brief.research.maxSourceAgeDays,workspaceConfigured:Boolean(brief.workspacePath)}};
   if(agent.deliversCode&&brief.workspacePath&&!contract.validators.includes("code-delivery"))contract.validators.push("code-delivery");
+  if(agent.consumesTestEvidence)contract.params.includeUpstreamEvidence=true;
   const qaDepth=md.policy.qaDepth[mode.qa];
   if(contract.validators.includes("qa-traceability"))contract.params.minTestsPerRequirement=qaDepth.minTests;
   const reviewerAgent=agent.reviewedBy!=="none"?agents.find(a=>a.id===agent.reviewedBy&&a.mode==="reviewer"):undefined;

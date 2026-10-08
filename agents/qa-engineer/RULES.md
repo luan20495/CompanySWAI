@@ -3,6 +3,7 @@ requires: ["requirements","implementation"]
 optionalRequires: ["deployment","design-spec"]
 produces: ["qa-report"]
 reviewedBy: none
+consumesTestEvidence: true
 validators: ["qa-traceability"]
 extraSections: ["QA Status","Traceability"]
 ---
@@ -35,3 +36,6 @@ Derive tests from the requirements and their acceptance criteria (REQ-/AC- IDs i
 - [REQ-003] -> NOT_APPLICABLE: covered by deployment, not by product behaviour
 ```
 PASS and FAIL need `| evidence:`; BLOCKED and NOT_APPLICABLE need a reason. Test IDs are unique (`T-001`…).
+
+## Evidence you can rely on
+You cannot run code yourself. The runtime executes the project's deterministic gates when code is delivered and shows you the result as `RUNTIME TEST EVIDENCE` under the upstream implementation (gate results and the output of each passing check, including test names and counts). Treat that as your executed evidence: cite the gate/test lines that support each PASS in `| evidence:`. If a requirement has no executed evidence, classify it BLOCKED (tests could not be run) or NOT_APPLICABLE (with the reason) — never invent a test run.
