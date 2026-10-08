@@ -30,7 +30,7 @@ export class ContractViolationError extends Error{
  constructor(readonly problems:string[]){super("Output contract violated after repair attempt: "+problems.join("; "));this.name="ContractViolationError";}
 }
 
-const REPAIR_ECHO_CHARS=12000;
+const REPAIR_ECHO_CHARS=12000,MAX_REPAIR_ROUNDS=2;
 const gateRecords=(gates:GateResult[])=>gates.map(g=>({name:g.name,status:g.status,detail:g.detail}));
 const clip=(id:string,length=128)=>id.slice(0,length);
 
@@ -69,18 +69,18 @@ export class TaskRunner{
    let response=await provider.generate({system:task.system,prompt:task.prompt,maxTokens:task.maxTokens,meta});
    let inputTokens=response.inputTokens,outputTokens=response.outputTokens,answeredBy=response.model;
    let problems=this.problemsIn(task,response.text);
-   if(problems.length){
-    // One repair round: the model sees exactly what the contract found wrong.
+   // Repair rounds: the model sees exactly what the contract and validators found wrong, and re-emits the whole answer.
+   for(let round=1;problems.length&&round<=MAX_REPAIR_ROUNDS;round++){
     const repair=task.prompt+"\n\n--- CONTRACT VIOLATION ---\nYour previous response did not satisfy the output contract:\n- "+problems.join("\n- ")+"\nRe-emit the complete response now, with every required section and format.\n\n--- PREVIOUS RESPONSE ---\n"+response.text.slice(0,REPAIR_ECHO_CHARS);
     response=await provider.generate({system:task.system,prompt:repair,maxTokens:task.maxTokens,meta});
     inputTokens+=response.inputTokens;outputTokens+=response.outputTokens;answeredBy=response.model??answeredBy;
     problems=this.problemsIn(task,response.text);
-    if(problems.length){
-     const failedAt=new Date().toISOString(),error=new ContractViolationError(problems),actualCost=this.cost(task,inputTokens,outputTokens);
-     await this.state.executions.append({...base,model:answeredBy??base.model,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,actualCost,error:error.message});
-     await this.state.memory.recordStatus(task.projectId,task.taskId,"FAILED",error.message);
-     throw error;
-    }
+   }
+   if(problems.length){
+    const failedAt=new Date().toISOString(),error=new ContractViolationError(problems),actualCost=this.cost(task,inputTokens,outputTokens);
+    await this.state.executions.append({...base,model:answeredBy??base.model,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,actualCost,error:error.message});
+    await this.state.memory.recordStatus(task.projectId,task.taskId,"FAILED",error.message);
+    throw error;
    }
    return await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,actualCost:this.cost(task,inputTokens,outputTokens)});
   }catch(error){

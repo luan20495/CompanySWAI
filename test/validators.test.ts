@@ -192,3 +192,21 @@ test("connectors are pluggable: static corpus, http-json and custom kinds share 
  assert.match(renderRetrieved(docs),/\[S1\][\s\S]*retrieved: 2026-10-08/);assert.deepEqual(defaultConnectorRegistry().kinds().sort(),["http-json","static"]);
  assert.throws(()=>defaultConnectorRegistry().create({kind:"nope"} as never),/not registered/);
 });
+
+test("requirement parsing accepts the forms real models produce (suffixed AC IDs, bold labels, basis stated inline) but still demands evidence for FACTs",()=>{
+ const body="- [REQ-004] **FACT**: Shoppers can search products (product-plan P2)\n  - [AC-004.1a] **(new)** Given a query, when searching, then matching products are listed.\n- [REQ-005] FACT: Payment uses a hosted card form per research C9.\n  - [AC-005.1] Given checkout when paying then no card data touches our servers.\n- [REQ-006] FACT: The shop is fast.\n  - [AC-006.1] Given load then fast.";
+ const parsed=parseRequirements(requirements(body));
+ assert.deepEqual(parsed.requirements.map(r=>[r.id,r.basis,r.acceptance.map(a=>a.id)]),[["REQ-004","FACT",["AC-004.1a"]],["REQ-005","FACT",["AC-005.1"]],["REQ-006","FACT",["AC-006.1"]]]);
+ assert.deepEqual(parsed.malformed,[]);
+ const problems=runValidators(["requirements-ids"],requirements(body),{params:{}}).problems;
+ assert.deepEqual(problems.filter(p=>/FACT but names no basis/.test(p)).map(p=>p.slice(0,7)),["REQ-006"],"only the FACT without any reference is rejected");
+});
+
+test("a response is repaired up to two times before the attempt fails, with all tokens accounted",async()=>{
+ const state=await tmpState();let calls=0;
+ const contract={sections:["Deliverables","Decisions","Evidence","Blockers","Handoff","Requirements"],verdict:false,validators:["requirements-ids"],params:{}};
+ const answers=["## Deliverables\nx","## Deliverables\nx\n## Decisions\nNone.\n## Evidence\ne\n## Blockers\nNone.\n## Handoff\nh\n## Requirements\n- [REQ-001] FACT: x",requirements("- [REQ-001] FACT: x (basis: brief)\n  - [AC-001.1] Given y when z then w.")];
+ const summary=await new ProjectOrchestrator(selectorFor(()=>usage(answers[Math.min(calls++,2)])),state).run(plan("rr2",[task("ba",{contract})]));
+ assert.deepEqual(summary.completed,["ba"]);assert.equal(calls,3);
+ assert.equal((await state.executions.list("rr2")).find(r=>r.status==="SUCCEEDED")!.inputTokens,30);
+});

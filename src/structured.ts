@@ -70,10 +70,14 @@ export function parseRequirements(text:string):ParsedRequirements{
  const out:ParsedRequirements={requirements:[],malformed:[]};let current:Requirement|undefined;
  for(const raw of lines(section(text,"Requirements"))){
   if(!raw.trim())continue;
-  const ac=raw.match(/^\s+[-*]\s*\[(AC-\d+(?:\.\d+)?)\]\s*(.+)$/);
+  const ac=raw.match(/^\s+[-*]\s*\[(AC-[\w.-]+)\]\s*(.+)$/);
   if(ac){if(current)current.acceptance.push({id:ac[1],text:ac[2].trim()});else out.malformed.push(raw.trim());continue;}
-  const req=raw.match(/^[-*]\s*\[(REQ-\d+)\]\s*(FACT|ASSUMPTION|INFERENCE|RECOMMENDATION)\s*:\s*(.+?)(?:\s*\((?:basis|evidence)\s*:\s*([^)]*)\))?\s*$/i);
-  if(req){current={id:req[1],basis:req[2].toUpperCase() as ClaimKind,text:req[3].trim(),evidence:ids(req[4]),acceptance:[]};out.requirements.push(current);continue;}
+  const req=raw.match(/^[-*]\s*\[(REQ-[\w.-]+)\]\s*(?:\*\*)?(FACT|ASSUMPTION|INFERENCE|RECOMMENDATION)(?:\*\*)?\s*:\s*(.+?)\s*$/i);
+  if(req){
+   // Evidence for a requirement is its explicit "(basis: …)" clause, or any reference to the brief, an upstream artifact, or a source/claim ID.
+   const clause=req[3].match(/\((?:basis|evidence|source)s?\s*:\s*([^)]*)\)/i),refs=req[3].match(/\b(?:brief|product-plan|research|[CS]\d+)\b/gi)??[];
+   current={id:req[1],basis:req[2].toUpperCase() as ClaimKind,text:req[3].replace(/\s*\((?:basis|evidence|source)s?\s*:[^)]*\)\s*$/i,"").trim(),evidence:[...ids(clause?.[1]),...refs.map(r=>r.toLowerCase())],acceptance:[]};out.requirements.push(current);continue;
+  }
   if(/^[-*]\s/.test(raw.trim()))out.malformed.push(raw.trim());
  }
  return out;
