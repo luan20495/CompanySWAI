@@ -25,6 +25,7 @@ export type BenchmarkReport={
  retries:number;failovers:number;
  resume:{crashInjected:boolean;correct:boolean;duplicateWork:number;firstRunFailed:string[];secondRunCompleted:number};
  providers:Record<string,number>;
+ /** `failed` counts failed gate attempts, including ones the task later repaired. */
  gates:{passed:number;failed:number;worktreeCommits:number};
  traceability:{requirements:number;tests:number;qa:string;citations:number;decisions:number};
  final:{status:string;risks:number};
@@ -118,7 +119,8 @@ export async function runBenchmark(options:BenchmarkOptions={}):Promise<Benchmar
  expect(Boolean(final?.status.startsWith("ACCEPTED")),"final status must be ACCEPTED*, got "+final?.status);
  expect(duplicates===0,"no successful execution may be duplicated");
  expect(report.traceability.requirements>0&&report.traceability.tests>=report.traceability.requirements&&report.traceability.qa==="PASS","requirements must be traced to passing QA tests");
- expect(report.gates.failed===0&&report.gates.passed>0,"deterministic gates must pass and have run");
+ expect(report.gates.passed>0,"deterministic gates must have run and passed");
+ if(!live)expect(report.gates.failed===0,"no gate may fail in the deterministic benchmark");
  expect(report.gates.worktreeCommits>0,"coding tasks must integrate through isolated worktrees");
  if(!live){
   expect(report.reviews.revisions>=1,"the forced revision must have happened");
