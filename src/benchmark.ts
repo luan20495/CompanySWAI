@@ -34,20 +34,33 @@ export type BenchmarkReport={
 const ok=(code:string)=>({cmd:"node",args:["-e",code]});
 const pass=ok("process.exit(0)");
 
-async function benchmarkRepo(){
+/**
+ * Real, dependency-free gates for the live benchmark: every JavaScript file must parse, and `node --test` must run at least
+ * one test and pass. Reviewers get genuine executed evidence instead of a no-op command. (Dry-run uses no-op gates because
+ * the deterministic provider writes no code.)
+ */
+export function liveGates(){
+ const tests=ok("const {spawnSync}=require('child_process');const env={...process.env};delete env.NODE_TEST_CONTEXT;const r=spawnSync(process.execPath,['--test'],{encoding:'utf8',env});process.stdout.write((r.stdout||'').slice(-1500));process.stderr.write((r.stderr||'').slice(-500));if(r.status!==0||!/# tests [1-9]/.test(r.stdout||''))process.exit(1)");
+ const syntax=ok("const fs=require('fs'),cp=require('child_process');const walk=d=>fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.name.startsWith('.')||e.name==='node_modules'?[]:e.isDirectory()?walk(d+'/'+e.name):[d+'/'+e.name]);const files=walk('.').filter(f=>/\\.(js|mjs)$/.test(f));if(!files.length){console.error('no JavaScript files were delivered');process.exit(1)}for(const f of files){const r=cp.spawnSync(process.execPath,['--check',f],{encoding:'utf8'});if(r.status!==0){console.error(f+': '+r.stderr);process.exit(1)}}");
+ return {checks:[tests],gates:{typecheck:[syntax],"unit-tests":[tests],"integration-tests":[],lint:[],build:[],security:[]}};
+}
+
+async function benchmarkRepo(files:Record<string,string>={}){
  const root=await mkdtemp(join(tmpdir(),"companyswai-benchmark-repo-"));
  const git=(...args:string[])=>execFileSync("git",args,{cwd:root,encoding:"utf8"});
  git("init","-q","-b","main");git("config","user.email","benchmark@example.test");git("config","user.name","Benchmark");git("config","commit.gpgsign","false");
- await mkdir(join(root,"src"),{recursive:true});await writeFile(join(root,"README.md"),"# Benchmark store\n");git("add","-A");git("commit","-qm","base");
+ await mkdir(join(root,"src"),{recursive:true});await writeFile(join(root,"README.md"),"# Benchmark project\n");
+ for(const [name,content] of Object.entries(files))await writeFile(join(root,name),content);git("add","-A");git("commit","-qm","base");
  return {root,git};
 }
 
 export async function runBenchmark(options:BenchmarkOptions={}):Promise<BenchmarkReport>{
  const started=Date.now(),live=options.live,failures:string[]=[];
- const brief=JSON.parse(await readFile(options.briefPath??"benchmarks/commerce-brief.json","utf8")) as ProjectBriefInput;
- const repo=await benchmarkRepo(),state=new CompanyState(options.stateDir??await mkdtemp(join(tmpdir(),"companyswai-benchmark-state-")));
- const withWorkspace={...brief,workspacePath:repo.root,isolation:"worktree" as const,autoCommit:true,checks:[pass],setup:[],
-  gates:{typecheck:[pass],"unit-tests":[pass],"integration-tests":[pass],lint:[pass],build:[pass],security:[pass]}};
+ const brief=JSON.parse(await readFile(options.briefPath??(live?"benchmarks/library-brief.json":"benchmarks/commerce-brief.json"),"utf8")) as ProjectBriefInput;
+ const repo=await benchmarkRepo(live?{"package.json":JSON.stringify({name:"benchmark-project",private:true,type:"module"},null,2)+"\n"}:{}),state=new CompanyState(options.stateDir??await mkdtemp(join(tmpdir(),"companyswai-benchmark-state-")));
+ const real=live?liveGates():undefined;
+ const withWorkspace={...brief,workspacePath:repo.root,isolation:"worktree" as const,autoCommit:true,checks:real?.checks??[pass],setup:[],
+  gates:real?.gates??{typecheck:[pass],"unit-tests":[pass],"integration-tests":[pass],lint:[pass],build:[pass],security:[pass]}};
  const roles=(await new MarkdownAgentRegistry().loadAll()).map(a=>a.id),skills=(await new SkillCatalog().load()).map(s=>s.name);
 
  // Fault injection (dry-run only): a rate-limited first profile, one forced revision, and a crash of the QA step on its first attempt.

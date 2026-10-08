@@ -1,0 +1,7 @@
+{
+  "projectId": "benchmark-semver",
+  "objective": "Build a small dependency-free Node.js library (ES modules, tested with the built-in node:test runner) for semantic versions: parse a version string into its parts and reject invalid ones, compare two versions with the correct precedence rules including pre-release identifiers, and check whether a version satisfies a caret (^) or tilde (~) range. Provide a clear public API in src/index.js and unit tests in test/*.test.js that exercise it.",
+  "capabilities": ["backend"],
+  "complexity": 2,
+  "mode": "BALANCED"
+}
