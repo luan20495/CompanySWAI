@@ -36,7 +36,7 @@ test("research evidence: sources need a URL or internal reference, authority and
  assert.ok(problems(research({sources:"- [S1] Blog | not a url | retrieved: 2026-10-01 | authority: HIGH"})).some(p=>/http\(s\) URL or a brief:\/repo:/.test(p)));
  assert.ok(problems(research({sources:"- [S1] Blog | https://b.example | authority: HIGH"})).some(p=>/retrieved/.test(p)));
  assert.ok(problems(research({sources:"- [S1] Blog | https://b.example | retrieved: 2026-10-01 | authority: SOMETIMES"})).some(p=>/authority/.test(p)));
- assert.ok(problems(research(),{...ext,params:{externalResearch:false}}).some(p=>/external research is disabled/.test(p)));
+ assert.ok(problems(research(),{...ext,params:{externalResearch:false}}).some(p=>/no research connector retrieved external sources/.test(p)));
  assert.deepEqual(problems(research({sources:"- [S1] The brief | brief:objective | retrieved: 2026-10-01 | authority: HIGH",claims:"- [C1] FACT: Stated scope. | cites: S1"}),{...ext,params:{externalResearch:false}}),[]);
 });
 
@@ -132,13 +132,17 @@ test("a task whose output violates a validator is repaired once, then fails with
  assert.ok(new ContractViolationError(["no testable acceptance"]).message.includes("acceptance"));
 });
 
-test("end to end: research, requirements, architecture review and QA flow through the compiled company and persist citations and traceability",async()=>{
+test("end to end: connectors retrieve real documents, research cites only those, and requirements, architecture review and QA persist",async()=>{
  const state=await tmpState();
- const compiled=await compileBriefToProjectPlan({projectId:"e2e-struct",objective:"Build a secure payments backend for merchants",capabilities:["backend","deployment","security-critical"],complexity:4,mode:"MAX_QUALITY",research:{enabled:true,maxSourceAgeDays:730}});
+ const compiled=await compileBriefToProjectPlan({projectId:"e2e-struct",objective:"Build a secure payments backend for merchants with a postgres database",capabilities:["backend","deployment","security-critical"],complexity:4,mode:"MAX_QUALITY",research:{enabled:true,maxSourceAgeDays:3650,connectors:[{kind:"static",path:"benchmarks/research-corpus.json"}]}});
  const summary=await new ProjectOrchestrator(dryRunSelector(),state).run(compiled);
  assert.deepEqual(summary.failed,[]);assert.equal(summary.completed.length,compiled.tasks.length);
  const research=await state.research.load("e2e-struct","researcher");
- assert.ok(research&&research.externalResearch&&research.sources.length>=1&&research.claims.length>=4);assert.match(research.sources[0].url,/^https:\/\//);
+ assert.ok(research&&research.externalResearch&&research.sources.length>=2&&research.claims.length>=4);
+ const corpus=JSON.parse(await readFile("benchmarks/research-corpus.json","utf8")) as Array<{url:string}>;
+ assert.ok(research.sources.every((s:{url:string})=>corpus.some(c=>c.url===s.url)),"every citation is a retrieved document");
+ const retrieved=JSON.parse(await readFile(join(state.root,"research","e2e-struct","researcher.retrieved.json"),"utf8")) as {documents:Array<{url:string;retrieved:string}>};
+ assert.ok(retrieved.documents.length>=2&&retrieved.documents.every(d=>/^\d{4}-\d{2}-\d{2}$/.test(d.retrieved)),"the retrieval itself is persisted for audit");
  const trace=await state.traceability.load("e2e-struct");
  assert.deepEqual(trace.requirements.map(r=>r.id),["REQ-001","REQ-002","REQ-003"]);assert.ok(trace.requirements.every(r=>r.acceptance.length>=1));
  assert.equal(trace.qa?.overall,"PASS");assert.equal(trace.tests.length,3);
@@ -146,4 +150,36 @@ test("end to end: research, requirements, architecture review and QA flow throug
  assert.ok(trace.decisions.length>=1&&trace.decisions[0].id==="DEC-001");assert.ok(trace.artifacts.every((a,i)=>a.id==="ART-"+String(i+1).padStart(3,"0")));
  const matrix=await state.traceability.renderMatrix("e2e-struct");assert.match(matrix,/REQ-001 \| AC-001\.1 \| T-001 \| PASS/);
  assert.match(await state.memory.read("e2e-struct","QA.md"),/Overall QA: PASS/);
+});
+
+const citing=(url:string)=>"## Deliverables\nr\n\n## Decisions\nNone.\n\n## Evidence\ne\n\n## Blockers\nNone.\n\n## Handoff\nh\n\n## Sources\n- [S1] Made up | "+url+" | retrieved: 2026-10-01 | authority: HIGH\n\n## Claims\n- [C1] FACT: Something. | cites: S1\n\n## Conflicts\nNone.";
+test("research cannot cite sources that were never retrieved, and enabled research without a connector cannot cite external URLs",async()=>{
+ const base={objective:"Build a payments backend for merchants",capabilities:["backend"] as ["backend"],complexity:3 as const};
+ const solo=(compiled:Awaited<ReturnType<typeof compileBriefToProjectPlan>>)=>{const t=compiled.tasks.find(x=>x.contract.validators.includes("research-evidence"))!;return {t,plan:{...compiled,tasks:[{...t,dependencies:[],review:undefined}]}};};
+ const withConnector=solo(await compileBriefToProjectPlan({...base,projectId:"rs1",research:{enabled:true,maxSourceAgeDays:3650,connectors:[{kind:"static",path:"benchmarks/research-corpus.json"}]}}));
+ const halluc=await new ProjectOrchestrator(selectorFor(()=>usage(citing("https://made-up.example/report"))),await tmpState()).run(withConnector.plan);
+ assert.deepEqual(halluc.failed,[withConnector.t.id]);
+ const state=await tmpState(),noConnector=solo(await compileBriefToProjectPlan({...base,projectId:"rs2",research:{enabled:true,maxSourceAgeDays:3650,connectors:[]}}));
+ assert.equal(noConnector.t.contract.params.externalResearch,false);
+ const failed=await new ProjectOrchestrator(selectorFor(()=>usage(citing("https://vendor.example/pricing"))),state).run(noConnector.plan);
+ assert.deepEqual(failed.failed,[noConnector.t.id]);assert.match((await state.executions.list("rs2")).find(r=>r.status==="FAILED")!.error??"",/no research connector retrieved/);
+});
+
+test("connectors are pluggable: static corpus, http-json and custom kinds share one interface",async()=>{
+ const {StaticConnector,HttpJsonConnector,ConnectorRegistry,defaultConnectorRegistry,gatherResearch,renderRetrieved}=await import("../src/research-connectors.js");
+ const staticDocs=await new StaticConnector("benchmarks/research-corpus.json").search("payment card checkout",{maxResults:3});
+ assert.ok(staticDocs[0].url.includes("pcisecuritystandards")&&staticDocs.length<=3);
+ assert.deepEqual(await new StaticConnector("benchmarks/research-corpus.json").search("zebra unrelated",{maxResults:3}),[]);
+ const original=globalThis.fetch;let seenAuth="",seenQuery="";
+ globalThis.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{seenAuth=new Headers(init?.headers).get("authorization")??"";seenQuery=new URL(String(input)).searchParams.get("q")??"";return new Response(JSON.stringify({results:[{url:"https://remote.example/a",title:"Remote A",excerpt:"x",published:"2026-01-01"}]}),{status:200});}) as typeof fetch;
+ try{
+  const docs=await new HttpJsonConnector("https://search.example/api",1000,"tok").search("hello world",{maxResults:2});
+  assert.equal(seenAuth,"Bearer tok");assert.equal(seenQuery,"hello world");assert.equal(docs[0].title,"Remote A");
+ }finally{globalThis.fetch=original;}
+ const custom=new ConnectorRegistry().register("mine",()=>({name:"mine",async search(){return [{url:"https://mine.example/x",title:"Mine",excerpt:"custom source"}];}}));
+ const docs=await gatherResearch([custom.create({kind:"mine"} as never),new StaticConnector("benchmarks/research-corpus.json")],["payment card"],{now:new Date("2026-10-08")});
+ assert.ok(docs.some(d=>d.connector==="mine"&&d.authority==="MEDIUM"&&d.retrieved==="2026-10-08")&&docs.some(d=>d.connector==="static"));
+ assert.equal(docs.length,new Set(docs.map(d=>d.url)).size,"duplicates are dropped");
+ assert.match(renderRetrieved(docs),/\[S1\][\s\S]*retrieved: 2026-10-08/);assert.deepEqual(defaultConnectorRegistry().kinds().sort(),["http-json","static"]);
+ assert.throws(()=>defaultConnectorRegistry().create({kind:"nope"} as never),/not registered/);
 });

@@ -1,6 +1,7 @@
 import {z} from "zod";
 import {SafeId} from "./ids.js";
 import {QualityMode,ReviewLevel,RoutingPolicy} from "./company.js";
+import {ConnectorConfig} from "./research-connectors.js";
 
 const Selection=z.object({
  provider:z.string().min(1).optional(),
@@ -86,7 +87,9 @@ export const BudgetPolicySchema=BudgetPolicyObject.default({maxTeamCost:{},maxAg
 
 export const ResearchSettings=z.object({
  /** When enabled, FACT claims in research artifacts must cite external sources (URL, retrieval date, authority). */
- enabled:z.boolean().default(false),maxSourceAgeDays:z.number().int().positive().default(730)
+ enabled:z.boolean().default(false),maxSourceAgeDays:z.number().int().positive().default(730),
+ /** Where external sources come from. Enabled research without a connector cannot cite external sources (nothing can be verified). */
+ connectors:z.array(ConnectorConfig).default([])
 });
 
 export const ProjectPlan=z.object({
@@ -94,7 +97,7 @@ export const ProjectPlan=z.object({
  mode:QualityMode.default("BALANCED"),
  budget:BudgetPolicySchema,
  workspace:WorkspaceSchema.optional(),
- research:ResearchSettings.default({enabled:false,maxSourceAgeDays:730}),
+ research:ResearchSettings.default({enabled:false,maxSourceAgeDays:730,connectors:[]}),
  /** Project signal tags (for example "android", "postgres", "brownfield") used for skill and gate selection. */
  signals:z.array(z.string()).default([]),
  tasks:z.array(TaskPlan).min(1)

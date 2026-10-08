@@ -15,6 +15,7 @@ import {join} from "node:path";
 import {redactError} from "./secrets.js";
 import {RunMetrics,type MetricsSnapshot,type TaskOutcome} from "./metrics.js";
 import type {ExecutionRecordValue} from "./execution-record.js";
+import {defaultConnectorRegistry,gatherResearch,renderRetrieved,type ConnectorRegistry,type ResearchDocument} from "./research-connectors.js";
 
 export type ProjectRunSummary={
  projectId:string;runId:string;completed:string[];paused:string[];approvalRequired:string[];failed:string[];waiting:string[];skipped:string[];
@@ -37,6 +38,8 @@ export type OrchestratorOptions={
  now?:()=>number;
  /** Extra model attempts after an isolated task conflicted with already-integrated work. */
  maxConflictRetries?:number;
+ /** Research connector kinds available to plans (default: static corpus and http-json). */
+ connectors?:ConnectorRegistry;
 };
 type SelectionFields={provider?:string;model?:string;capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number;routing?:string;minQualityTier?:number};
 type Pause="PAUSED"|"APPROVAL_REQUIRED";
@@ -76,7 +79,7 @@ export function pickNext<T extends {id:string;priority:number}>(candidates:T[],r
 
 export class ProjectOrchestrator{
  private runner:TaskRunner;private capacity=new KeyedSemaphore();private budgetGate=new Mutex();private inFlight=new Set<InFlightCost>();
- private slots=new Signal();private metrics=new RunMetrics();private telemetry:Promise<unknown>=Promise.resolve();private runId="";
+ private retrieval=new Map<string,Promise<ResearchDocument[]>>();private slots=new Signal();private metrics=new RunMetrics();private telemetry:Promise<unknown>=Promise.resolve();private runId="";
  constructor(private selectProvider:ProviderSelector,private state=new CompanyState(),private options:OrchestratorOptions={}){
   this.runner=new TaskRunner(state);
  }
@@ -151,7 +154,27 @@ export class ProjectOrchestrator{
  private async validationContext(plan:ProjectPlanValue,contract:{validators?:string[]}){
   return contract.validators?.includes("qa-traceability")?{requirementIds:await this.state.traceability.requirementIds(plan.projectId)}:undefined;
  }
+ /** Documents retrieved once per project run for research tasks; absent when research is off or no connector is configured. */
+ private retrieved(plan:ProjectPlanValue,task:TaskPlanValue){
+  if(!plan.research.enabled||!plan.research.connectors.length||!task.contract.validators.includes("research-evidence"))return Promise.resolve([] as ResearchDocument[]);
+  const key=plan.projectId+"/"+task.id;
+  if(!this.retrieval.has(key)){
+   const registry=this.options.connectors??defaultConnectorRegistry();
+   const queries=[task.prompt.split("\n")[0].slice(0,300),...plan.signals];
+   this.retrieval.set(key,gatherResearch(plan.research.connectors.map(c=>registry.create(c)),queries).then(async docs=>{
+    await this.state.research.saveRetrieval(plan.projectId,task.id,docs);
+    this.emit(plan.projectId,"research.retrieved",{taskId:task.id,detail:docs.length+" document(s)"});
+    return docs;
+   }));
+  }
+  return this.retrieval.get(key)!;
+ }
  private async makerRun(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs=task.inputRefs):Promise<RunTask>{
+  const documents=await this.retrieved(plan,task),withSources=documents.length?prompt+"\n\n"+renderRetrieved(documents):prompt;
+  const base=await this.makerRunBase(plan,task,withSources,manifest,inputRefs);
+  return documents.length?{...base,retrieved:documents.map(d=>({url:d.url,title:d.title,retrieved:d.retrieved,authority:d.authority,published:d.published})),validationContext:{...base.validationContext,retrievedUrls:documents.map(d=>d.url)}}:base;
+ }
+ private async makerRunBase(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs=task.inputRefs):Promise<RunTask>{
   return {projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,requiredGates:task.requiredGates,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
  }
 

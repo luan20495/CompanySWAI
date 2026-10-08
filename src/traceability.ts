@@ -85,6 +85,7 @@ export class TraceabilityStore{
 // ------------------------------------------------------------------ research citations
 const StoredResearch=z.object({taskId:z.string(),at:z.string(),externalResearch:z.boolean(),sources:z.array(z.any()),claims:z.array(z.any()),conflicts:z.array(z.any()),notes:z.array(z.string())});
 export class ResearchStore{
+ async saveRetrieval(projectId:string,taskId:string,documents:unknown[]){await writeFileAtomic(join(this.root,SafeId.parse(projectId),SafeId.parse(taskId)+".retrieved.json"),JSON.stringify({taskId,at:new Date().toISOString(),documents},null,2));}
  constructor(private root=".companyswai/research"){}
  private path(projectId:string,taskId:string){return join(this.root,SafeId.parse(projectId),SafeId.parse(taskId)+".json");}
  async save(projectId:string,taskId:string,parsed:ParsedResearch,external:boolean,notes:string[]){

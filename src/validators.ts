@@ -6,7 +6,7 @@ import {QA_STATUSES,detectConflicts,impliedQaStatus,parseArchitectureReview,pars
  * Deterministic output validators. Agents' RULES.md name the validators that apply to their answers; the runtime
  * enforces them (one repair round, then the attempt fails). A validator never calls a model.
  */
-export type ValidationContext={params:Record<string,unknown>;requirementIds?:string[];now?:number};
+export type ValidationContext={params:Record<string,unknown>;requirementIds?:string[];/** URLs the research connectors really retrieved for this task; external sources must be among them. */retrievedUrls?:string[];now?:number};
 export type ValidatorResult={problems:string[];notes:string[]};
 type Validator=(text:string,ctx:ValidationContext)=>ValidatorResult;
 
@@ -24,7 +24,8 @@ const researchEvidence:Validator=(text,ctx)=>{
   if(sources.has(source.id))problems.push("duplicate source id "+source.id);sources.set(source.id,source);
   const web=/^https?:\/\/\S+$/i.test(source.url),internal=/^(brief|repo):\S+$/i.test(source.url);
   if(!web&&!internal)problems.push("source "+source.id+" needs an http(s) URL or a brief:/repo: reference");
-  if(web&&!external)problems.push("source "+source.id+" is an external URL but external research is disabled; cite only brief:/repo: references");
+  if(web&&!external)problems.push("source "+source.id+" is an external URL but no research connector retrieved external sources for this project; cite only brief:/repo: references");
+  if(web&&external&&ctx.retrievedUrls&&!ctx.retrievedUrls.includes(source.url))problems.push("source "+source.id+" ("+source.url+") was not retrieved by a research connector; cite only the RETRIEVED SOURCES");
   if(!source.title)problems.push("source "+source.id+" has no title");
   if(!["HIGH","MEDIUM","LOW"].includes(source.authority??""))problems.push("source "+source.id+" needs authority: HIGH|MEDIUM|LOW");
   if(web&&Number.isNaN(time(source.retrieved)))problems.push("source "+source.id+" needs retrieved: YYYY-MM-DD");

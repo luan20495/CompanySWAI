@@ -16,7 +16,7 @@ export const ProjectBrief=z.object({
  mode:QualityMode.default("BALANCED"),
  /** Free-form tags ("android", "postgres", "brownfield", …) that activate dynamic skills and gates. */
  signals:z.array(z.string().min(1)).default([]),
- research:ResearchSettings.default({enabled:false,maxSourceAgeDays:730}),
+ research:ResearchSettings.default({enabled:false,maxSourceAgeDays:730,connectors:[]}),
  budget:BudgetPolicySchema,workspacePath:z.string().min(1).optional(),checks:z.array(CheckCommand).default([]),
  gates:z.record(z.string(),z.array(CheckCommand)).default({}),setup:z.array(CheckCommand).default([]),
  autoCommit:z.boolean().default(false),isolation:z.enum(["none","worktree"]).default("none")
@@ -60,7 +60,7 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
   const deps=new Set<string>();
   for(const artifact of [...agent.requires,...agent.optionalRequires])for(const producer of producers.get(artifact)??[])if(producer.id!==agent.id)deps.add(producer.id);
   const picked=selectSkills(dynamic,agent.id,signals),skillBodies=picked.map(s=>s.body);
-  const contract:Contract={sections:[...md.contract.sections,...agent.extraSections],verdict:false,validators:[...agent.validators],params:{externalResearch:brief.research.enabled,maxSourceAgeDays:brief.research.maxSourceAgeDays,workspaceConfigured:Boolean(brief.workspacePath)}};
+  const contract:Contract={sections:[...md.contract.sections,...agent.extraSections],verdict:false,validators:[...agent.validators],params:{externalResearch:brief.research.enabled&&brief.research.connectors.length>0,maxSourceAgeDays:brief.research.maxSourceAgeDays,workspaceConfigured:Boolean(brief.workspacePath)}};
   if(agent.deliversCode&&brief.workspacePath&&!contract.validators.includes("code-delivery"))contract.validators.push("code-delivery");
   const reviewerAgent=agent.reviewedBy!=="none"?agents.find(a=>a.id===agent.reviewedBy&&a.mode==="reviewer"):undefined;
   const decision=reviewerAgent?reviewDecision(md.policy,brief.mode,risk):undefined;

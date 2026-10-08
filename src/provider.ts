@@ -1,5 +1,5 @@
 /** Descriptive metadata about the step being run. Remote providers never receive it; local fixtures (dry-run) use it to emit valid structured output. */
-export type RequestMeta={taskId:string;kind:"maker"|"review";sections:string[];validators:string[];params:Record<string,unknown>;requirementIds?:string[];slot?:number};
+export type RequestMeta={taskId:string;kind:"maker"|"review";sections:string[];validators:string[];params:Record<string,unknown>;requirementIds?:string[];slot?:number;retrieved?:Array<{url:string;title:string;retrieved:string;authority:string;published?:string}>};
 export type ModelRequest={system:string;prompt:string;maxTokens:number;signal?:AbortSignal;meta?:RequestMeta};
 /** `model` is the model that actually answered, when the provider reports it (aliases like "sonnet" resolve to a concrete id). */
 export type ModelResponse={text:string;inputTokens:number;outputTokens:number;model?:string};
