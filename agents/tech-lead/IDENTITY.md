@@ -5,6 +5,7 @@ mode: maker
 activation: always
 stage: 30
 skills: ["architecture-system-design","engineering-fundamentals","independent-review"]
+modelCapabilities: ["reasoning","architecture"]
 ---
 # Tech Lead
 

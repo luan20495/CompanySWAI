@@ -5,6 +5,7 @@ mode: maker
 activation: capability:web-ui|mobile
 stage: 40
 skills: ["ux-ui-quality","requirements-analysis"]
+modelCapabilities: ["reasoning","design"]
 ---
 # UX/UI Designer
 

@@ -5,6 +5,7 @@ mode: maker
 activation: always
 stage: 70
 skills: ["qa-risk-testing","requirements-analysis"]
+modelCapabilities: ["reasoning","testing"]
 ---
 # QA Engineer
 

@@ -79,15 +79,17 @@ export class LocalRepoWorkspace{
   * Applies patches atomically: back up, write, run checks, optionally commit only the patched paths.
   * Any failure restores the previous file contents and removes files and directories the patch created.
   */
- async transaction(patches:FilePatch[],checks:CheckCommandSpec[]=[],commitMessage?:string):Promise<TransactionResult>{
+ async transaction(requested:FilePatch[],checks:CheckCommandSpec[]=[],commitMessage?:string):Promise<TransactionResult>{
   await this.validate({requireGit:commitMessage!=null});
-  const targets=new Map<string,string>();
+  let patches=requested;
+  const targets=new Map<string,FilePatch>();
   for(const patch of patches){
-   const target=await this.resolveSafe(patch.path);
-   if(targets.has(target))throw new WorkspaceError("Duplicate patch for "+patch.path,"UNSAFE_PATH");
+   const target=await this.resolveSafe(patch.path),earlier=targets.get(target);
+   if(earlier&&earlier.content!==patch.content)throw new WorkspaceError("Conflicting patches for "+patch.path,"UNSAFE_PATH");
    if(containsSecret(patch.content))throw new WorkspaceError("Patch for "+patch.path+" contains a credential-shaped string","SECRET_IN_PATCH");
-   targets.set(target,patch.path);
+   if(!earlier)targets.set(target,patch);
   }
+  patches=[...targets.values()];
   const paths=patches.map(p=>p.path.split(/[\\/]+/).filter(Boolean).join("/"));
   if(commitMessage!=null&&paths.length){
    const dirty=(await this.git(["status","--porcelain","--",...paths])).stdout.trim();

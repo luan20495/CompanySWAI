@@ -5,6 +5,7 @@ mode: reviewer
 activation: always
 stage: 60
 skills: ["independent-review","engineering-fundamentals"]
+modelCapabilities: ["reasoning","review"]
 ---
 # Independent Reviewer
 

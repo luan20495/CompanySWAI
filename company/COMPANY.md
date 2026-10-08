@@ -13,14 +13,7 @@ CompanySWAI is an MD-driven software company. Markdown is the source of truth fo
 - Never mark work done while a blocking dependency or required quality gate is unresolved.
 
 ## Required output format
-Every maker output should contain, when applicable:
-- `## Deliverables`
-- `## Decisions`
-- `## Risks`
-- `## Evidence`
-- `## Handoff`
-
-Keep these sections concise so the runtime can persist decisions and handoffs into project Markdown memory.
+Every output follows `company/OUTPUT-CONTRACT.md` (Deliverables, Decisions, Evidence, Blockers, Handoff). That file is the only definition of the contract.
 
 ## Code changes
 When implementation requires creating or replacing a source file and a project workspace is configured, emit an exact file block:

@@ -85,6 +85,8 @@ test("patches containing credentials or duplicate targets are rejected before wr
  const root=await repo(),ws=new LocalRepoWorkspace(root);
  await assert.rejects(()=>ws.transaction([{path:"k.txt",content:"key=sk-ant-api03-abcdefghij1234567890"}]),fail("SECRET_IN_PATCH"));
  await assert.rejects(()=>ws.transaction([{path:"d.txt",content:"1"},{path:"./d.txt",content:"2"}]),fail("UNSAFE_PATH"));
+ const repeated=await ws.transaction([{path:"r.txt",content:"same"},{path:"./r.txt",content:"same"}]);
+ assert.deepEqual(repeated.changedFiles,["r.txt"]);
  assert.equal(await exists(join(root,"k.txt")),false);
 });
 

@@ -5,6 +5,7 @@ mode: maker
 activation: always
 stage: 10
 skills: ["requirements-analysis","research-evidence"]
+modelCapabilities: ["reasoning","product"]
 ---
 # Product Lead
 

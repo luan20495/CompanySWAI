@@ -5,6 +5,7 @@ mode: maker
 activation: capability:mobile
 stage: 50
 skills: ["engineering-fundamentals","mobile-engineering","ux-ui-quality"]
+modelCapabilities: ["reasoning","coding"]
 ---
 # Mobile Engineer
 

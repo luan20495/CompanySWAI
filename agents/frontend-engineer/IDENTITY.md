@@ -5,6 +5,7 @@ mode: maker
 activation: capability:web-ui
 stage: 50
 skills: ["engineering-fundamentals","frontend-engineering","ux-ui-quality"]
+modelCapabilities: ["reasoning","coding"]
 ---
 # Frontend Engineer
 

@@ -15,10 +15,14 @@ export class ApprovalRequiredError extends Error{
 
 /** Review executions are accounted to the task they review. */
 export const baseTaskId=(taskId:string)=>taskId.replace(/--review-\d+$/,"");
-/** Money is spent once a model call returned: SUCCEEDED records, plus CHECKPOINTED ones that never reached a terminal record. */
+/**
+ * Money is spent once a model call returned. Each execution id counts once, through its latest
+ * record that carries usage (CHECKPOINTED, then SUCCEEDED, or FAILED when finalization failed).
+ */
 export function settledRecords(records:ExecutionRecordValue[]){
- const terminal=new Set(records.filter(r=>r.status==="SUCCEEDED"||r.status==="FAILED").map(r=>r.id));
- return records.filter(r=>r.status==="SUCCEEDED"||(r.status==="CHECKPOINTED"&&!terminal.has(r.id)));
+ const latest=new Map<string,ExecutionRecordValue>();
+ for(const r of records)if((r.status==="CHECKPOINTED"||r.status==="SUCCEEDED"||r.status==="FAILED")&&(r.actualCost!=null||r.inputTokens+r.outputTokens>0))latest.set(r.id,r);
+ return [...latest.values()];
 }
 const sum=(rows:ExecutionRecordValue[])=>rows.reduce((total,record)=>total+(record.actualCost??0),0);
 export function spentCost(records:ExecutionRecordValue[],taskId?:string){

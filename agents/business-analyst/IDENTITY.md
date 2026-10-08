@@ -5,6 +5,7 @@ mode: maker
 activation: always
 stage: 20
 skills: ["requirements-analysis"]
+modelCapabilities: ["reasoning","product"]
 ---
 # Business Analyst
 

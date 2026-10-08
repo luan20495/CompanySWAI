@@ -12,12 +12,14 @@ const Selection=z.object({
  minContextWindow:z.number().int().positive().optional()
 }).refine(value=>Boolean(value.provider)===Boolean(value.model),{message:"provider and model must be supplied together"});
 
+const Contract=z.object({sections:z.array(z.string().min(1)).default([]),verdict:z.boolean().default(false)});
 const ReviewPlan=Selection.and(z.object({
  role:z.string().min(1),
  department:z.string().min(1).default("quality"),
  system:z.string().min(1),
  maxTokens:z.number().int().positive().default(2048),
- maxRounds:z.number().int().min(1).max(5).default(2)
+ maxRounds:z.number().int().min(1).max(5).default(2),
+ contract:Contract.default({sections:[],verdict:true})
 }));
 
 const TaskPlan=Selection.and(z.object({
@@ -28,6 +30,8 @@ const TaskPlan=Selection.and(z.object({
  system:z.string().min(1),
  prompt:z.string().min(1),
  inputRefs:z.array(z.string()).default([]),
+ produces:z.array(z.string()).default([]),
+ contract:Contract.default({sections:[],verdict:false}),
  maxTokens:z.number().int().positive().default(4096),
  review:ReviewPlan.optional()
 }));

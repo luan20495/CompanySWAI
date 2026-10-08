@@ -5,6 +5,7 @@ mode: maker
 activation: complexity>=3
 stage: 15
 skills: ["research-evidence"]
+modelCapabilities: ["reasoning"]
 ---
 # Researcher
 

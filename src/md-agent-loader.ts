@@ -6,7 +6,8 @@ import {SafeId} from "./ids.js";
 const Mode=z.enum(["maker","reviewer"]);
 const AgentMeta=z.object({
  id:SafeId,department:z.string().min(1),mode:Mode,activation:z.string().min(1),
- stage:z.number().int().nonnegative(),skills:z.array(SafeId).default([])
+ stage:z.number().int().nonnegative(),skills:z.array(SafeId).default([]),
+ modelCapabilities:z.array(z.string().min(1)).default(["reasoning"])
 });
 const RuleMeta=z.object({
  requires:z.array(z.string()).default([]),optionalRequires:z.array(z.string()).default([]),
@@ -68,6 +69,6 @@ export function activationMatches(expression:string,capabilities:string[],comple
  throw new Error("Unsupported activation expression: "+expression);
 }
 
-export function systemPromptFor(agent:AgentDefinition,companyText="",workflowText="",qualityText=""){
- return [companyText,workflowText,qualityText,agent.identity,agent.rules,...agent.skillText].filter(Boolean).join("\n\n---\n\n");
+export function systemPromptFor(agent:AgentDefinition,companyText="",workflowText="",qualityText="",contractText=""){
+ return [companyText,workflowText,qualityText,contractText,agent.identity,agent.rules,...agent.skillText].filter(Boolean).join("\n\n---\n\n");
 }

@@ -2,38 +2,38 @@ import "dotenv/config";
 import {readFile} from "node:fs/promises";
 import {ProjectBrief} from "./work-planner.js";
 import {compileBriefToProjectPlan} from "./plan-compiler.js";
+import {ProjectPlan} from "./project.js";
 import {ProjectOrchestrator} from "./orchestrator.js";
 import {loadRuntime} from "./runtime.js";
-import {FileExecutionStore} from "./execution-store.js";
-import {buildRetrospective,FileRetrospectiveStore} from "./retrospective.js";
-import {DryRunProvider} from "./providers/dry-run.js";
-import {CompanyExperienceStore} from "./company-experience.js";
-import type {ProviderSelector} from "./provider-selector.js";
+import {buildRetrospective} from "./retrospective.js";
+import {dryRunSelector} from "./providers/dry-run.js";
+import {CompanyState} from "./state.js";
 
+const USAGE="Usage: npm run company -- <project-brief.json|project-plan.json> [--dry-run] [--runtime config/providers.json] [--state-dir .companyswai] [--wait-approval[=seconds]]";
 const args=process.argv.slice(2);
-const briefPath=args.find(a=>!a.startsWith("--"));
-const runtimeFlag=args.indexOf("--runtime");
-const runtimePath=runtimeFlag>=0?args[runtimeFlag+1]:"config/providers.json";
-const dryRun=args.includes("--dry-run");
+const flagValue=(name:string)=>{const i=args.indexOf(name);return i>=0?args[i+1]:undefined;};
+const inputPath=args.find((a,i)=>!a.startsWith("--")&&!["--runtime","--state-dir"].includes(args[i-1]??""));
+if(!inputPath)throw new Error(USAGE);
+const dryRun=args.includes("--dry-run"),runtimePath=flagValue("--runtime")??"config/providers.json";
+const waitArg=args.find(a=>a==="--wait-approval"||a.startsWith("--wait-approval="));
+const waitSeconds=waitArg?.includes("=")?Number(waitArg.split("=")[1]):3600;
+if(waitArg&&!(waitSeconds>0))throw new Error("--wait-approval needs a positive number of seconds");
 
-if(!briefPath)throw new Error("Usage: npm run company -- <project-brief.json> [--dry-run] [--runtime config/providers.json]");
+const state=new CompanyState(flagValue("--state-dir")??".companyswai");
+const raw=JSON.parse(await readFile(inputPath,"utf8"));
+// A plan resumes exactly as written; a brief is recompiled (deterministically) and resumes from the persisted execution log.
+const plan=raw&&typeof raw==="object"&&"tasks" in raw?ProjectPlan.parse(raw):await (async()=>{
+ const brief=ProjectBrief.parse(raw),prior=await state.retrospectives.load(brief.projectId);
+ return compileBriefToProjectPlan(brief,[...(prior?.lessons??[]),...await state.experience.validatedLessons()]);
+})();
 
-const brief=ProjectBrief.parse(JSON.parse(await readFile(briefPath,"utf8")));
-const retrospectiveStore=new FileRetrospectiveStore();
-const experienceStore=new CompanyExperienceStore();
-const prior=await retrospectiveStore.load(brief.projectId);
-const companyLessons=await experienceStore.validatedLessons();
-const plan=await compileBriefToProjectPlan(brief,[...(prior?.lessons??[]),...companyLessons]);
-
-const drySelector:ProviderSelector=request=>{
- const provider=new DryRunProvider();
- return {provider,profile:{provider:provider.name,model:provider.model,state:"AVAILABLE",capabilities:request.demand.capabilities,contextWindow:1000000,maxConcurrency:4},estimatedCost:0};
-};
-
-const selector=dryRun?drySelector:(await loadRuntime(runtimePath)).selector;
-const summary=await new ProjectOrchestrator(selector).run(plan);
-const records=await new FileExecutionStore().list(plan.projectId);
-const retrospective=await retrospectiveStore.save(buildRetrospective(plan.projectId,records));
-const experience=await experienceStore.observe(retrospective);
+const selector=dryRun?dryRunSelector():(await loadRuntime(runtimePath)).selector;
+const orchestrator=new ProjectOrchestrator(selector,state,waitArg?{approvalWait:{pollMs:2000,timeoutMs:waitSeconds*1000}}:{});
+const summary=await orchestrator.run(plan);
+const retrospective=await state.retrospectives.save(buildRetrospective(plan.projectId,await state.executions.list(plan.projectId)));
+const experience=await state.experience.observe(retrospective);
 
 console.log(JSON.stringify({summary,retrospective,validatedExperience:experience.filter(x=>x.status==="VALIDATED")},null,2));
+// Exit codes: 1 = a task failed, 2 = run is parked (capacity/approval/blocked dependents) and can be resumed, 0 = everything done.
+if(summary.failed.length)process.exitCode=1;
+else if(summary.paused.length||summary.approvalRequired.length||summary.waiting.length)process.exitCode=2;

@@ -5,6 +5,7 @@ mode: maker
 activation: capability:backend
 stage: 50
 skills: ["engineering-fundamentals","backend-engineering"]
+modelCapabilities: ["reasoning","coding"]
 ---
 # Backend Engineer
 

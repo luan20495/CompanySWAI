@@ -12,7 +12,7 @@ export const ProjectBrief=z.object({
 });
 export type ProjectBriefValue=z.infer<typeof ProjectBrief>;
 export type ProjectBriefInput=z.input<typeof ProjectBrief>;
-export type PlannedTask={id:string;department:string;agentRole:string;dependencies:string[];objective:string;reviewer?:string;risk:"low"|"medium"|"high"|"critical";system:string;produces:string[];requires:string[];};
+export type PlannedTask={id:string;department:string;agentRole:string;dependencies:string[];objective:string;reviewer?:string;risk:"low"|"medium"|"high"|"critical";system:string;produces:string[];requires:string[];capabilities:string[];contract:{sections:string[];verdict:boolean}};
 export type CompanyWorkPlan={projectId:string;departments:DepartmentPlan[];tasks:PlannedTask[]};
 const risk=(profile:ProjectProfile):PlannedTask["risk"]=>profile.capabilities.includes("security-critical")?"critical":profile.capabilities.includes("performance-critical")?"high":profile.complexity>=4?"high":"medium";
 export async function planCompanyWork(input:ProjectBriefInput,registry=new MarkdownAgentRegistry()):Promise<CompanyWorkPlan>{
@@ -20,9 +20,10 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
  const [departments,globalMd]=await Promise.all([composeCompany(profile,registry),loadCompanyMarkdown()]);const agents=departments.flatMap(d=>d.agents.map(a=>a.definition)),makers=agents.filter(a=>a.mode==="maker").sort((a,b)=>a.stage-b.stage||a.id.localeCompare(b.id)),producers=new Map<string,AgentDefinition[]>();
  for(const agent of makers)for(const artifact of agent.produces){const list=producers.get(artifact)??[];list.push(agent);producers.set(artifact,list);}
  const tasks:PlannedTask[]=[];
+ for(const agent of makers)for(const artifact of agent.requires)if(!(producers.get(artifact)??[]).some(p=>p.id!==agent.id))throw new Error("Required artifact '"+artifact+"' for "+agent.id+" has no active producer; add a capability or complexity that activates one");
  for(const agent of makers){const deps=new Set<string>();for(const artifact of [...agent.requires,...agent.optionalRequires])for(const producer of producers.get(artifact)??[])if(producer.id!==agent.id)deps.add(producer.id);
   const reviewer=agent.reviewedBy!=="none"&&agents.some(a=>a.id===agent.reviewedBy&&a.mode==="reviewer")?agent.reviewedBy:undefined;
-  tasks.push({id:agent.id,department:agent.department,agentRole:agent.id,dependencies:[...deps],objective:brief.objective+"\n\nAssigned responsibility: "+agent.identity.split(/\r?\n/)[0],reviewer,risk:risk(profile),system:systemPromptFor(agent,globalMd.company,globalMd.workflow,globalMd.quality),produces:agent.produces,requires:agent.requires});
+  tasks.push({id:agent.id,department:agent.department,agentRole:agent.id,dependencies:[...deps],objective:brief.objective+"\n\nAssigned responsibility: "+agent.identity.split(/\r?\n/)[0],reviewer,risk:risk(profile),system:systemPromptFor(agent,globalMd.company,globalMd.workflow,globalMd.quality,globalMd.contractText),produces:agent.produces,requires:agent.requires,capabilities:agent.modelCapabilities,contract:{sections:globalMd.contract.sections,verdict:false}});
  }
  return {projectId:brief.projectId,departments,tasks};
 }

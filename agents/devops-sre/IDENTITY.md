@@ -5,6 +5,7 @@ mode: maker
 activation: capability:deployment
 stage: 50
 skills: ["platform-reliability","engineering-fundamentals"]
+modelCapabilities: ["reasoning","deployment"]
 ---
 # DevOps / SRE
 

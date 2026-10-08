@@ -1,11 +1,12 @@
 import type {ModelProvider,ModelRequest,ModelResponse} from "../provider.js";
 import type {ProviderSelector} from "../provider-selector.js";
+import {REVIEW_REQUEST_PREFIX} from "../output-parser.js";
 
 export class DryRunProvider implements ModelProvider{
  readonly name="dry-run";
  constructor(readonly model="deterministic"){}
  async generate(request:ModelRequest):Promise<ModelResponse>{
-  const isReviewer=/independent reviewer|first non-empty line must be pass/i.test(request.system);
+  const isReviewer=request.prompt.startsWith(REVIEW_REQUEST_PREFIX);
   const text=isReviewer
    ?"PASS\n\n## Evidence\nDry-run reviewer accepted deterministic fixture output.\n\n## Blockers\nNone."
    :"## Deliverables\nDry-run output for: "+request.prompt.slice(0,120)+"\n\n## Decisions\nNo production decision; dry-run only.\n\n## Evidence\nDeterministic provider fixture.\n\n## Blockers\nNone.\n\n## Handoff\nContinue to the next dependency.";

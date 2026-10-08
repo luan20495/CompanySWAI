@@ -25,12 +25,13 @@ test("unknown cost fails closed only when limits are configured",()=>{
  assert.throws(()=>assertBudget({maxProjectCost:10},[],ctx,undefined),/unknown/);
  assert.throws(()=>assertBudget({approvalThreshold:1},[],ctx,undefined),/unknown/);
 });
-test("review spend is attributed to the reviewed task and checkpointed spend counts until finalized",()=>{
+test("review spend is attributed to the reviewed task and checkpointed spend counts once",()=>{
  const review={...row("a--review-1","quality","reviewer",1.5)};
  assert.throws(()=>assertBudget({maxTaskCost:3},[row("a","engineering","backend-engineer",2),review],{taskId:"a",department:"engineering",agentRole:"backend-engineer"},1),/Task budget/);
  const checkpointed={...row("k","engineering","backend-engineer",4),status:"CHECKPOINTED" as const};
  assert.throws(()=>assertBudget({maxProjectCost:4.5},[checkpointed],ctx,1),/Project budget/);
- assert.doesNotThrow(()=>assertBudget({maxProjectCost:4.5},[checkpointed,{...checkpointed,status:"FAILED" as const,actualCost:undefined}],ctx,1));
+ assert.doesNotThrow(()=>assertBudget({maxProjectCost:9},[checkpointed,{...checkpointed,status:"SUCCEEDED" as const}],ctx,1),"finalizing must not double count");
+ assert.throws(()=>assertBudget({maxProjectCost:7},[checkpointed,{...checkpointed,status:"SUCCEEDED" as const}],ctx,4),/Project budget/);
 });
 test("approval threshold requires persisted approval and approved estimates pass",()=>{
  assert.throws(()=>assertBudget({approvalThreshold:1},[],ctx,2),ApprovalRequiredError);
