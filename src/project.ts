@@ -48,4 +48,5 @@ export const ProjectPlan=z.object({
  tasks:z.array(TaskPlan).min(1)
 });
 export type ProjectPlanValue=z.infer<typeof ProjectPlan>;
+export type ProjectPlanInput=z.input<typeof ProjectPlan>;
 export async function loadProjectPlan(path:string){return ProjectPlan.parse(JSON.parse(await readFile(path,"utf8")));}
