@@ -16,6 +16,8 @@ const RuleMeta=z.object({
  validators:z.array(z.string()).default([]),
  /** Review lens applied by this agent's independent reviewer (declared in company/GATES.md). */
  reviewLens:z.string().optional(),
+ /** Extra `## Section` headings this agent must emit on top of the company output contract. */
+ extraSections:z.array(z.string()).default([]),
  /** True for agents whose deliverable is code in the project workspace (code gates apply). */
  deliversCode:z.boolean().default(false)
 });

@@ -10,6 +10,8 @@ import {compileBriefToProjectPlan} from "./plan-compiler.js";
 import {loadRuntimeConfig} from "./runtime.js";
 import {MEMORY_FILES} from "./project-memory.js";
 import {containsSecret} from "./secrets.js";
+import {isKnownValidator} from "./validators.js";
+import {SkillCatalog} from "./skill-selector.js";
 
 const problems:string[]=[],check=(ok:boolean,message:string)=>{if(!ok)problems.push(message);};
 
@@ -55,6 +57,22 @@ for(const [artifact,file] of Object.entries(company.memory.routes)){
 check((MEMORY_FILES as readonly string[]).includes(company.memory.fallback),"company/MEMORY.md fallback is not a memory file");
 check(company.contract.sections.join()==="Deliverables,Decisions,Evidence,Blockers,Handoff","company/OUTPUT-CONTRACT.md must define Deliverables, Decisions, Evidence, Blockers, Handoff in that order");
 
+// 3b. Validators, lenses, dynamic skills and policy tables named in Markdown must all exist.
+const dynamicSkills=await new SkillCatalog().load();
+for(const agent of agents){
+ for(const name of agent.validators)check(isKnownValidator(name),agent.id+" names unknown validator '"+name+"'");
+ if(agent.reviewLens)check(Boolean(company.gates.lenses[agent.reviewLens]),agent.id+" names unknown review lens '"+agent.reviewLens+"'");
+}
+for(const [name,lens] of Object.entries(company.gates.lenses)){
+ if(lens.validator)check(isKnownValidator(lens.validator),"lens '"+name+"' names unknown validator '"+lens.validator+"'");
+ if(lens.skill)check(dynamicSkills.some(s=>s.name===lens.skill),"lens '"+name+"' names unknown skill '"+lens.skill+"'");
+}
+for(const skill of dynamicSkills)for(const target of skill.appliesTo)check(target==="*"||declared.has(target),"dynamic skill "+skill.name+" applies to unknown agent '"+target+"'");
+for(const [mode,rules] of Object.entries(company.policy.modes)){
+ for(const level of Object.values(rules.levelByRisk))check(Boolean(level&&company.policy.levels[level]),"mode "+mode+" uses undefined review level "+level);
+ for(const gate of rules.requiredGates)check(Boolean(company.gates.codeGates[gate]),"mode "+mode+" requires undefined code gate "+gate);
+}
+
 // 4. Examples and provider configuration parse and compile.
 const brief=ProjectBrief.parse(JSON.parse(await readFile("examples/project-brief.json","utf8")));
 const plan=await compileBriefToProjectPlan(brief);
@@ -76,4 +94,4 @@ for(const entry of [".env",".companyswai/","config/providers.json","node_modules
 check(existsSync(join("agents","AGENTS.md")),"agents/AGENTS.md is missing");
 
 if(problems.length){console.error(JSON.stringify({status:"failed",problems},null,2));process.exit(1);}
-console.log(JSON.stringify({status:"ok",agents:agents.map(a=>a.id),exampleTasks:plan.tasks.map(t=>t.id),providerProfiles:profiles.map(p=>p.id),trackedFilesScanned:tracked.length},null,2));
+console.log(JSON.stringify({status:"ok",agents:agents.map(a=>a.id),exampleTasks:plan.tasks.map(t=>t.id),providerProfiles:profiles.map(p=>p.id),dynamicSkills:dynamicSkills.map(s=>s.name),trackedFilesScanned:tracked.length},null,2));

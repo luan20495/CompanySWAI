@@ -1,11 +1,17 @@
 import type {ModelProvider} from "./provider.js";
 import type {CapacityProfile,TaskDemand,ProviderState} from "./capacity.js";
-import {estimateCost,routeTask} from "./capacity.js";
+import {effectiveState,eligible,estimateCost,routeTask} from "./capacity.js";
 import {CapacityUnavailableError} from "./errors.js";
 
-export type ProviderSelectionRequest={preferredProvider?:string;preferredModel?:string;demand:TaskDemand;exclude?:Array<{provider:string;model:string;profileId?:string}>;};
+export type ProviderSelectionRequest={
+ preferredProvider?:string;preferredModel?:string;demand:TaskDemand;exclude?:Array<{provider:string;model:string;profileId?:string}>;
+ /** Routing policy for this request (quality/balanced/cost/local first); the selector default applies when omitted. */
+ policy?:string;
+ /** Only profiles with a free concurrency slot qualify; otherwise a BUSY/COOLDOWN CapacityUnavailableError tells the caller how to wait. */
+ requireFreeSlot?:boolean;
+};
 export type ProviderSelection={provider:ModelProvider;profile:CapacityProfile;estimatedCost?:number;reservedTokens?:number;reservedCost?:number;};
-export type UsageReport={inputTokens:number;outputTokens:number;actualCost?:number};
+export type UsageReport={inputTokens:number;outputTokens:number;actualCost?:number;latencyMs?:number};
 /**
  * A selection reserves token quota, credit and one concurrency slot on its profile.
  * Every selection must be settled exactly once through reportSuccess, reportFailure or release.
@@ -54,9 +60,18 @@ export function createCapacitySelector(profiles:CapacityProfile[],instantiate:Pr
   const excluded=new Set((request.exclude??[]).map(key)),at=now();
   const filtered=state.filter(profile=>!excluded.has(key(profile))&&(!request.preferredProvider||profile.provider===request.preferredProvider)&&(!request.preferredModel||profile.model===request.preferredModel));
   // Capacity aware: prefer profiles with a free concurrency slot, queue on a saturated one only when nothing else can serve.
-  const free=filtered.filter(profile=>active(profile)<profile.maxConcurrency);
-  const selected=routeTask(free,request.demand,at)??routeTask(filtered,request.demand,at);
-  if(!selected){const preference=request.preferredProvider?request.preferredProvider+"/"+request.preferredModel:"automatic routing";throw new CapacityUnavailableError("No eligible provider capacity for "+preference);}
+  const eligibleNow=filtered.filter(profile=>eligible(profile,request.demand,at));
+  const free=eligibleNow.filter(profile=>active(profile)<profile.maxConcurrency);
+  // Capacity aware: prefer profiles with a free concurrency slot; queue on a saturated one only when the caller allows it.
+  const selected=routeTask(free,request.demand,at)??(request.requireFreeSlot?undefined:routeTask(eligibleNow,request.demand,at));
+  if(!selected){
+   const preference=request.preferredProvider?request.preferredProvider+"/"+request.preferredModel:"automatic routing";
+   if(eligibleNow.length)throw new CapacityUnavailableError("All eligible provider capacity for "+preference+" is busy","BUSY");
+   // Profiles that would qualify except that they are cooling down tell the caller when to look again.
+   const cooling=filtered.filter(profile=>effectiveState(profile,at)!=="AVAILABLE"&&effectiveState(profile,at)!=="QUOTA_LOW"&&profile.resetAt&&Date.parse(profile.resetAt)>at&&eligible({...profile,state:"AVAILABLE"},request.demand,at));
+   if(cooling.length)throw new CapacityUnavailableError("Eligible provider capacity for "+preference+" is cooling down","COOLDOWN",Math.min(...cooling.map(profile=>Date.parse(profile.resetAt!))));
+   throw new CapacityUnavailableError("No eligible provider capacity for "+preference);
+  }
   const reservedTokens=request.demand.estimatedInputTokens+request.demand.estimatedOutputTokens,reservedCost=estimateCost(selected,request.demand);
   if(selected.tokenQuotaRemaining!=null)selected.tokenQuotaRemaining=Math.max(0,selected.tokenQuotaRemaining-reservedTokens);
   if(selected.creditRemaining!=null&&reservedCost!=null)selected.creditRemaining=Math.max(0,selected.creditRemaining-reservedCost);

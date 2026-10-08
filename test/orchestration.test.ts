@@ -9,7 +9,8 @@ import {changes,compliant,isReviewRequest,pass,plan,reviewer,selectorFor,task,tm
 test("orchestrator runs dependency waves and hands upstream sections, not whole transcripts, downstream",async()=>{
  const state=await tmpState(),prompts:string[]=[];
  const selector=selectorFor(request=>{prompts.push(request.prompt);return usage(compliant("out:"+request.prompt.slice(0,12),{handoff:"HANDOFF-MARK"})+"\n\n## Scratch\nPRIVATE-NOISE");});
- const summary=await new ProjectOrchestrator(selector,state).run(plan("p1",[task("product"),task("critic",{dependencies:["product"]}),task("architecture",{dependencies:["critic"]})]));
+ const sections=["Deliverables","Decisions","Evidence","Blockers","Handoff"],contract={sections,verdict:false,validators:[],params:{}};
+ const summary=await new ProjectOrchestrator(selector,state).run(plan("p1",[task("product",{contract}),task("critic",{dependencies:["product"],contract}),task("architecture",{dependencies:["critic"],contract})]));
  assert.equal(summary.waves,3);assert.deepEqual(summary.completed.sort(),["architecture","critic","product"]);
  assert.match(prompts[1],/UPSTREAM product/);assert.match(prompts[1],/HANDOFF-MARK/);assert.doesNotMatch(prompts[1],/PRIVATE-NOISE/);
  assert.match(prompts[2],/UPSTREAM critic/);

@@ -60,7 +60,7 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
   const deps=new Set<string>();
   for(const artifact of [...agent.requires,...agent.optionalRequires])for(const producer of producers.get(artifact)??[])if(producer.id!==agent.id)deps.add(producer.id);
   const picked=selectSkills(dynamic,agent.id,signals),skillBodies=picked.map(s=>s.body);
-  const contract:Contract={sections:md.contract.sections,verdict:false,validators:[...agent.validators],params:{externalResearch:brief.research.enabled,maxSourceAgeDays:brief.research.maxSourceAgeDays,workspaceConfigured:Boolean(brief.workspacePath)}};
+  const contract:Contract={sections:[...md.contract.sections,...agent.extraSections],verdict:false,validators:[...agent.validators],params:{externalResearch:brief.research.enabled,maxSourceAgeDays:brief.research.maxSourceAgeDays,workspaceConfigured:Boolean(brief.workspacePath)}};
   if(agent.deliversCode&&brief.workspacePath&&!contract.validators.includes("code-delivery"))contract.validators.push("code-delivery");
   const reviewerAgent=agent.reviewedBy!=="none"?agents.find(a=>a.id===agent.reviewedBy&&a.mode==="reviewer"):undefined;
   const decision=reviewerAgent?reviewDecision(md.policy,brief.mode,risk):undefined;
@@ -79,7 +79,7 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
     if(lens?.skill&&!reviewSkills.some(s=>s.name===lens.skill)){const skill=dynamic.find(s=>s.name===lens.skill);if(skill)extra.push(skill.body);}
     if(lens)extra.push("# Review lens: "+lensName+"\n\n"+lens.instruction+(lens.validator==="architecture-review"?"\n\nApplicable categories: "+architectureCategories.join(", ")+".":""));
     slots.push({lens:lensName,system:systemPromptFor(reviewerAgent,md.company,md.workflow,md.quality,md.contractText,extra),
-     contract:{sections:md.contract.reviewerSections,verdict:true,validators:lens?.validator?[lens.validator]:[],params:{architectureCategories}}});
+     contract:{sections:[...md.contract.reviewerSections,...(lens?.sections??[])],verdict:true,validators:lens?.validator?[lens.validator]:[],params:{architectureCategories}}});
    }
    review={role:reviewerAgent.id,department:reviewerAgent.department,level:decision.level,reviewers:decision.reviewers,gates:decision.gates,system:slots[0].system,capabilities:reviewerAgent.modelCapabilities,contract:slots[0].contract,slots,skills:reviewSkills.map(s=>s.name)};
   }

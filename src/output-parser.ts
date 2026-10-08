@@ -22,7 +22,7 @@ export function parseAgentOutput(text:string):ParsedAgentOutput{
 }
 export const isNone=(value?:string)=>!value||/^(none|no blockers|n\/a|nothing)\.?$/i.test(value.trim());
 
-export type ContractRequirement={sections:string[];verdict:boolean};
+export type ContractRequirement={sections:string[];verdict:boolean;validators?:string[];params?:Record<string,unknown>};
 /** Human-readable list of what the output fails to provide under the contract. */
 export function contractViolations(text:string,contract:ContractRequirement):string[]{
  const problems:string[]=[];

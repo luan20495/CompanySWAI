@@ -1,19 +1,22 @@
-import {ProjectPlan,type ProjectPlanValue,type ProjectPlanInput} from "./project.js";
-import type {ProviderSelector,ProviderSelection} from "./provider-selector.js";
+import {randomUUID} from "node:crypto";
+import {ProjectPlan,type ProjectPlanInput,type ProjectPlanValue,type TaskPlanValue} from "./project.js";
+import type {ProviderSelection,ProviderSelector} from "./provider-selector.js";
 import {isProviderFailure} from "./provider-selector.js";
 import {CapacityUnavailableError} from "./errors.js";
 import {ApprovalRequiredError,assertBudget,budgetReport,type BudgetReport,type InFlightCost} from "./budget.js";
 import {KeyedSemaphore} from "./semaphore.js";
 import {TaskRunner,type RunTask} from "./runner.js";
 import {CompanyState} from "./state.js";
-import {REVIEW_REQUEST_PREFIX,condense,parseReviewVerdict} from "./output-parser.js";
+import {parseReviewVerdict} from "./output-parser.js";
+import {makerContext,reviewContext,type ContextEntry,type Upstream} from "./context.js";
 import {LocalRepoWorkspace} from "./repo-workspace.js";
 import {redactError} from "./secrets.js";
+import {RunMetrics,type MetricsSnapshot,type TaskOutcome} from "./metrics.js";
 import type {ExecutionRecordValue} from "./execution-record.js";
 
 export type ProjectRunSummary={
- projectId:string;completed:string[];paused:string[];approvalRequired:string[];failed:string[];waiting:string[];skipped:string[];
- waves:number;reviewRuns:number;revisions:number;failovers:number;budget:BudgetReport;
+ projectId:string;runId:string;completed:string[];paused:string[];approvalRequired:string[];failed:string[];waiting:string[];skipped:string[];
+ waves:number;reviewRuns:number;revisions:number;disagreements:number;failovers:number;budget:BudgetReport;metrics:MetricsSnapshot;
 };
 export type OrchestratorOptions={
  /** When set, a task that needs approval waits (polling the persisted approval) instead of ending the run. */
@@ -21,29 +24,67 @@ export type OrchestratorOptions={
  /** Upper bound for the upstream context handed to a task, per dependency. */
  maxUpstreamChars?:number;
  sleep?:(ms:number)=>Promise<void>;
+ /** Tasks running at the same time within this project (backpressure); further ready tasks queue. */
+ maxParallelTasks?:number;
+ /** Longest a task waits for a rate-limited provider to cool down before it is parked as PAUSED_CAPACITY. */
+ maxCooldownWaitMs?:number;
+ /** One priority point is earned per this many ms of waiting, so low-priority tasks cannot starve. */
+ agingMs?:number;
+ /** Provider failures tolerated for one model step before the task fails. */
+ maxProviderAttempts?:number;
+ now?:()=>number;
 };
-type SelectionFields={provider?:string;model?:string;capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number;};
-type TaskPlan=ProjectPlanValue["tasks"][number];
+type SelectionFields={provider?:string;model?:string;capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number;routing?:string;minQualityTier?:number};
 type Pause="PAUSED"|"APPROVAL_REQUIRED";
-type Counters={reviewRuns:number;revisions:number;failovers:number};
+type Counters={reviewRuns:number;revisions:number;disagreements:number;failovers:number};
 
 class ReviewExhaustedError extends Error{constructor(taskId:string,rounds:number){super("Review still requires changes after "+rounds+" round(s) for "+taskId);this.name="ReviewExhaustedError";}}
+class GateError extends Error{constructor(message:string){super(message);this.name="GateError";}}
 
 class Mutex{
  private tail:Promise<unknown>=Promise.resolve();
  run<T>(fn:()=>Promise<T>):Promise<T>{const next=this.tail.then(fn,fn);this.tail=next.catch(()=>undefined);return next;}
 }
-const DEFAULT_UPSTREAM_CHARS=8000;
+/** Event signal: waiters resume on the next notify() or when their timer fires. Nothing polls. */
+class Signal{
+ private waiters=new Set<()=>void>();
+ notify(){for(const wake of [...this.waiters])wake();}
+ wait(ms?:number){
+  return new Promise<void>(resolve=>{
+   let timer:NodeJS.Timeout|undefined;
+   const wake=()=>{if(timer)clearTimeout(timer);this.waiters.delete(wake);resolve();};
+   if(ms!=null)timer=setTimeout(wake,Math.max(1,ms));
+   this.waiters.add(wake);
+  });
+ }
+}
+const DEFAULT_UPSTREAM_CHARS=8000,DEFAULT_PARALLEL=4,DEFAULT_COOLDOWN_WAIT_MS=120_000,DEFAULT_AGING_MS=20_000,DEFAULT_PROVIDER_ATTEMPTS=8;
+
+/** Highest effective priority first: static priority (critical-path weight) plus aging; ties by id for determinism. */
+export function pickNext<T extends {id:string;priority:number}>(candidates:T[],readyAt:Map<string,number>,now:number,agingMs:number):T|undefined{
+ let best:T|undefined,bestScore=-Infinity;
+ for(const task of candidates){
+  const score=task.priority+(now-(readyAt.get(task.id)??now))/agingMs;
+  if(score>bestScore||(score===bestScore&&best&&task.id<best.id)){best=task;bestScore=score;}
+ }
+ return best;
+}
 
 export class ProjectOrchestrator{
  private runner:TaskRunner;private capacity=new KeyedSemaphore();private budgetGate=new Mutex();private inFlight=new Set<InFlightCost>();
+ private slots=new Signal();private metrics=new RunMetrics();private telemetry:Promise<unknown>=Promise.resolve();private runId="";
  constructor(private selectProvider:ProviderSelector,private state=new CompanyState(),private options:OrchestratorOptions={}){
   this.runner=new TaskRunner(state);
+ }
+ private now(){return (this.options.now??Date.now)();}
+ /** Best-effort structured event; telemetry must never break a run. */
+ private emit(projectId:string,type:string,fields:{taskId?:string;profileId?:string;provider?:string;model?:string;detail?:string}={}){
+  this.telemetry=this.telemetry.then(()=>this.state.telemetry.append(projectId,{runId:this.runId,type,...fields})).catch(()=>undefined);
  }
 
  /** Structural validation: unique ids, known dependencies, acyclic graph, reviewers independent of their makers. */
  private validate(plan:ProjectPlanValue){
-  const byId=new Map<string,TaskPlan>();
+  const byId=new Map<string,TaskPlanValue>();
   for(const task of plan.tasks){if(byId.has(task.id))throw new Error("Duplicate task id: "+task.id);byId.set(task.id,task);}
   for(const task of plan.tasks){
    for(const dep of task.dependencies)if(!byId.has(dep))throw new Error("Missing dependency "+dep+" for "+task.id);
@@ -58,21 +99,35 @@ export class ProjectOrchestrator{
   for(const task of plan.tasks)visit(task.id,[]);
  }
  private requestFor(target:SelectionFields,exclude:ProviderSelection[]=[]){
-  return {preferredProvider:target.provider,preferredModel:target.model,demand:{capabilities:target.capabilities,estimatedInputTokens:target.estimatedInputTokens,estimatedOutputTokens:target.estimatedOutputTokens,maxCost:target.maxCost,minContextWindow:target.minContextWindow},exclude:exclude.map(item=>({provider:item.profile.provider,model:item.profile.model,profileId:item.profile.id}))};
+  return {preferredProvider:target.provider,preferredModel:target.model,policy:target.routing,requireFreeSlot:true,demand:{capabilities:target.capabilities,estimatedInputTokens:target.estimatedInputTokens,estimatedOutputTokens:target.estimatedOutputTokens,maxCost:target.maxCost,minContextWindow:target.minContextWindow,minQualityTier:target.minQualityTier},exclude:exclude.map(item=>({provider:item.profile.provider,model:item.profile.model,profileId:item.profile.id}))};
  }
  private downstream(plan:ProjectPlanValue,taskId:string){return plan.tasks.filter(t=>t.dependencies.includes(taskId)).map(t=>({taskId:t.id,role:t.agentRole}));}
+ private slotCount(task:TaskPlanValue){return task.review?Math.max(1,task.review.slots.length):0;}
+ private slotConfig(task:TaskPlanValue,slot:number){
+  const review=task.review!,configured=review.slots[slot];
+  return configured??{lens:undefined,system:review.system,contract:review.contract};
+ }
+ private reviewTaskId(task:TaskPlanValue,version:number,slot:number){return task.id+"--review-"+version+"-"+slot;}
 
  /** Derives a task's position from the persisted execution log alone; this is what makes resume deterministic. */
- private history(records:ExecutionRecordValue[],task:TaskPlan){
+ private history(records:ExecutionRecordValue[],task:TaskPlanValue,plan:ProjectPlanValue){
   const indexed=records.map((record,index)=>({record,index}));
-  const maker=indexed.filter(x=>x.record.taskId===task.id&&x.record.status==="SUCCEEDED").at(-1);
+  const makers=indexed.filter(x=>x.record.taskId===task.id&&x.record.status==="SUCCEEDED"),maker=makers.at(-1);
   const reviews=indexed.filter(x=>x.record.taskId.startsWith(task.id+"--review-")&&x.record.status==="SUCCEEDED");
-  const lastReview=reviews.at(-1),reviewedMaker=Boolean(maker&&lastReview&&lastReview.index>maker.index);
-  const verdict=lastReview?parseReviewVerdict(lastReview.record.output)??"CHANGES_REQUIRED":undefined;
+  const since=reviews.filter(x=>maker&&x.index>maker.index).map(x=>x.record);
+  const slots=this.slotCount(task),verdictBySlot=new Map<number,"PASS"|"CHANGES_REQUIRED">();
+  for(const r of since)verdictBySlot.set(r.slot??0,parseReviewVerdict(r.output)??"CHANGES_REQUIRED");
+  const reviewed=slots>0&&[...Array(slots).keys()].every(k=>verdictBySlot.has(k));
+  const verdicts=[...verdictBySlot.values()],allPass=reviewed&&verdicts.every(v=>v==="PASS"),anyChanges=verdicts.includes("CHANGES_REQUIRED");
+  const checksGate=Boolean(task.review?.gates.includes("checks")&&plan.workspace&&task.requiredGates.length);
+  const gatesOk=!checksGate||Boolean(maker&&(maker.record.evidence.length>0||maker.record.gates.some(g=>g.status==="PASS")));
   return {
-   maker:maker?.record,lastReview:lastReview?.record,reviewCount:reviews.length,
-   complete:Boolean(maker&&(!task.review||(reviewedMaker&&verdict==="PASS"))),
-   needsRevision:Boolean(task.review&&maker&&reviewedMaker&&verdict==="CHANGES_REQUIRED")
+   maker:maker?.record,makerVersions:makers.length,reviewsTotal:reviews.length,since,
+   missingSlots:[...Array(slots).keys()].filter(k=>!verdictBySlot.has(k)),
+   disagreement:verdicts.includes("PASS")&&anyChanges,
+   complete:Boolean(maker&&(!task.review||(allPass&&gatesOk))),
+   needsRevision:Boolean(task.review&&maker&&reviewed&&anyChanges),
+   gatesFailed:Boolean(maker&&task.review&&allPass&&!gatesOk)
   };
  }
  /** A model response that was paid for but never finalized (crash between provider return and persistence). */
@@ -85,15 +140,15 @@ export class ProjectOrchestrator{
   if(!latest)throw new Error("No successful output: "+taskId);
   return latest.output;
  }
- /** Upstream context is the handoff-bearing sections of each dependency, bounded; full artifacts stay in the stores. */
- private buildPrompt(plan:ProjectPlanValue,task:TaskPlan,records:ExecutionRecordValue[]){
-  if(!task.dependencies.length)return task.prompt;
-  const limit=this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS;
-  const upstream=task.dependencies.map(dep=>"UPSTREAM "+dep+"\n"+condense(this.latestOutput(records,dep),limit));
-  return task.prompt+"\n\n--- UPSTREAM ARTIFACTS ---\n"+upstream.join("\n\n");
+ private upstreamOf(plan:ProjectPlanValue,task:TaskPlanValue,records:ExecutionRecordValue[]):Upstream[]{
+  return task.dependencies.map(dep=>({task:plan.tasks.find(t=>t.id===dep)!,output:this.latestOutput(records,dep)}));
  }
- private makerRun(plan:ProjectPlanValue,task:TaskPlan,prompt:string,inputRefs=task.inputRefs):RunTask{
-  return {projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
+ private refs(manifest:ContextEntry[]){return manifest.map(e=>e.ref+"["+e.sections.join(",")+"]");}
+ private async validationContext(plan:ProjectPlanValue,contract:{validators?:string[]}){
+  return contract.validators?.includes("qa-traceability")?{requirementIds:await this.state.traceability.requirementIds(plan.projectId)}:undefined;
+ }
+ private async makerRun(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs=task.inputRefs):Promise<RunTask>{
+  return {projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
  }
 
  private async waitForApproval(projectId:string,key:string,cost:number){
@@ -126,109 +181,171 @@ export class ProjectOrchestrator{
   });
  }
 
- /** One model run with failover. Returns the SUCCEEDED record, or why the task cannot proceed right now. */
+ /** One model run with failover, backpressure and cooldown waits. Returns the SUCCEEDED record, or why the task cannot proceed right now. */
  private async execute(plan:ProjectPlanValue,target:SelectionFields,task:RunTask,approvalKey:string,counters:Counters):Promise<ExecutionRecordValue|Pause>{
   const pending=this.unfinalized(await this.state.executions.list(plan.projectId),task.taskId);
   if(pending)return this.runner.finalize(task,pending);
-  const tried:ProviderSelection[]=[];
+  const tried:ProviderSelection[]=[],maxAttempts=this.options.maxProviderAttempts??DEFAULT_PROVIDER_ATTEMPTS,maxWait=this.options.maxCooldownWaitMs??DEFAULT_COOLDOWN_WAIT_MS;
+  let waitedMs=0;
   for(;;){
    let selection:ProviderSelection;
    try{selection=this.selectProvider(this.requestFor(target,tried));}
-   catch(error){if(error instanceof CapacityUnavailableError){await this.runner.pauseCapacity(task,error.message);return "PAUSED";}throw error;}
+   catch(error){
+    if(!(error instanceof CapacityUnavailableError))throw error;
+    if(error.reason==="BUSY"){
+     // Backpressure: every eligible provider is at its concurrency limit. Resume the moment any run finishes.
+     this.metrics.capacityWaits++;this.emit(plan.projectId,"provider.waiting",{taskId:task.taskId,detail:"busy"});
+     await this.slots.wait();continue;
+    }
+    if(error.reason==="COOLDOWN"&&error.retryAt!=null){
+     const ms=Math.max(1,error.retryAt-this.now());
+     if(waitedMs+ms<=maxWait){waitedMs+=ms;this.metrics.capacityWaits++;this.emit(plan.projectId,"provider.waiting",{taskId:task.taskId,detail:"cooldown "+ms+"ms"});await this.slots.wait(ms+5);continue;}
+    }
+    await this.runner.pauseCapacity(task,error.message);this.emit(plan.projectId,"task.paused",{taskId:task.taskId,detail:error.message});return "PAUSED";
+   }
    let admission;
    try{admission=await this.admit(plan,task,approvalKey,selection);}
-   catch(error){this.selectProvider.release?.(selection);throw error;}
+   catch(error){this.selectProvider.release?.(selection);this.slots.notify();throw error;}
    if("approval" in admission){
-    this.selectProvider.release?.(selection);
+    this.selectProvider.release?.(selection);this.slots.notify();
     const needed=admission.approval.estimatedCost;
     await this.state.approvals.request(plan.projectId,approvalKey,needed);
     await this.state.memory.recordStatus(plan.projectId,approvalKey,"APPROVAL_REQUIRED",admission.approval.message);
+    this.emit(plan.projectId,"approval.required",{taskId:approvalKey,detail:admission.approval.message});
     if(await this.waitForApproval(plan.projectId,approvalKey,needed))continue;
     return "APPROVAL_REQUIRED";
    }
-   const priced={...task,billing:selection.profile.billing??"metered",estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
+   const profileId=selection.profile.id??selection.profile.provider+"/"+selection.profile.model;
+   const priced={...task,profileId,billing:selection.profile.billing??"metered",estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
+   this.emit(plan.projectId,"provider.selected",{taskId:task.taskId,profileId,provider:selection.provider.name,model:selection.provider.model});
+   const began=this.now();
    try{
-    const result=await this.capacity.use(selection.profile.id??selection.profile.provider+"/"+selection.profile.model,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));
-    this.selectProvider.reportSuccess?.(selection,{inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCost:result.actualCost});
+    const result=await this.capacity.use(profileId,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));
+    this.metrics.providerRun(profileId,selection.profile.maxConcurrency,this.now()-began);
+    this.metrics.usage(result.inputTokens,result.outputTokens,result.actualCost,result.billing==="subscription");
+    this.selectProvider.reportSuccess?.(selection,{inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCost:result.actualCost,latencyMs:this.now()-began});
     return result;
    }catch(error){
+    this.metrics.providerRun(profileId,selection.profile.maxConcurrency,this.now()-began);
     if(!isProviderFailure(error)){this.selectProvider.release?.(selection);throw error;}
-    this.selectProvider.reportFailure?.(selection,error);tried.push(selection);counters.failovers++;
-   }finally{this.inFlight.delete(admission.reservation);}
+    this.selectProvider.reportFailure?.(selection,error);tried.push(selection);counters.failovers++;this.metrics.failovers++;this.metrics.retries++;
+    this.emit(plan.projectId,"provider.failover",{taskId:task.taskId,profileId,detail:redactError(error)});
+    if(tried.length>=maxAttempts)throw new Error("Giving up after "+tried.length+" provider failures: "+redactError(error));
+   }finally{this.inFlight.delete(admission.reservation);this.slots.notify();}
   }
  }
 
  /** Advances one task from whatever state the log says it is in until it is done, parked or failed. */
- private async advance(plan:ProjectPlanValue,task:TaskPlan,counters:Counters):Promise<"DONE"|Pause>{
+ private async advance(plan:ProjectPlanValue,task:TaskPlanValue,counters:Counters):Promise<"DONE"|Pause>{
   for(;;){
-   const records=await this.state.executions.list(plan.projectId),state=this.history(records,task);
+   const records=await this.state.executions.list(plan.projectId),state=this.history(records,task,plan);
    if(state.complete)return "DONE";
    if(!state.maker){
-    const result=await this.execute(plan,task,this.makerRun(plan,task,this.buildPrompt(plan,task,records)),task.id,counters);
+    const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
+    const result=await this.execute(plan,task,await this.makerRun(plan,task,built.prompt,built.manifest),task.id,counters);
     if(typeof result==="string")return result;
     continue;
    }
    const review=task.review;if(!review)return "DONE";
-   if(state.reviewCount>=review.maxRounds)throw new ReviewExhaustedError(task.id,review.maxRounds);
-   if(state.needsRevision&&state.lastReview){
+   if(state.gatesFailed)throw new GateError("Review passed but required deterministic gates are not satisfied for "+task.id+": no passing check evidence was recorded");
+   const slots=this.slotCount(task),rounds=Math.ceil(state.reviewsTotal/slots);
+   if(state.needsRevision){
+    if(rounds>=review.maxRounds)throw new ReviewExhaustedError(task.id,review.maxRounds);
     counters.revisions++;
-    const prompt=this.buildPrompt(plan,task,records)+"\n\n--- PREVIOUS OUTPUT ---\n"+state.maker.output+"\n\n--- REVIEW FEEDBACK ---\n"+state.lastReview.output+"\n\nRevise the work to address every required change.";
-    const result=await this.execute(plan,task,this.makerRun(plan,task,prompt,[...task.inputRefs,"execution:"+state.lastReview.taskId]),task.id,counters);
+    if(state.disagreement){counters.disagreements++;this.emit(plan.projectId,"review.disagreement",{taskId:task.id,detail:"reviewers split; the revision reconciles every finding"});await this.state.memory.recordStatus(plan.projectId,task.id,"REVIEWER_DISAGREEMENT","reviewers split between PASS and CHANGES_REQUIRED; revising against all findings");}
+    const findings=state.since.filter(r=>(parseReviewVerdict(r.output)??"CHANGES_REQUIRED")==="CHANGES_REQUIRED").map((r,i)=>"REVIEWER FINDINGS "+(i+1)+":\n"+r.output).join("\n\n");
+    const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
+    const prompt=built.prompt+"\n\n--- PREVIOUS OUTPUT ---\n"+state.maker.output+"\n\n--- REVIEW FEEDBACK ---\n"+findings+(state.disagreement?"\n\nThe reviewers disagreed. Address every CHANGES_REQUIRED finding; if you reject one, say why under ## Decisions.":"")+"\n\nRevise the work to address every required change.";
+    const result=await this.execute(plan,task,await this.makerRun(plan,task,prompt,built.manifest,[...task.inputRefs,"execution:"+state.since.at(-1)!.taskId]),task.id,counters);
     if(typeof result==="string")return result;
     continue;
    }
-   const round=state.reviewCount+1,reviewTaskId=task.id+"--review-"+round;
-   const run:RunTask={projectId:plan.projectId,taskId:reviewTaskId,agentRole:review.role,department:review.department,kind:"review",inputRefs:[...task.inputRefs,"execution:"+task.id],system:review.system,prompt:REVIEW_REQUEST_PREFIX+" The first non-empty line MUST be PASS or CHANGES_REQUIRED.\n\n--- TASK ---\n"+task.prompt+"\n\n--- OUTPUT UNDER REVIEW ---\n"+state.maker.output,maxTokens:review.maxTokens,contract:review.contract};
-   const result=await this.execute(plan,review,run,task.id,counters);
-   if(typeof result==="string")return result;
-   counters.reviewRuns++;
+   if(rounds>=review.maxRounds&&state.missingSlots.length===slots&&state.reviewsTotal>=review.maxRounds*slots)throw new ReviewExhaustedError(task.id,review.maxRounds);
+   // Independent reviews: one fresh context per slot, run side by side. Each sees only its own earlier findings.
+   const upstream=this.upstreamOf(plan,task,records),version=state.makerVersions;
+   const runs=state.missingSlots.map(slot=>async()=>{
+    const config=this.slotConfig(task,slot),previous=records.filter(r=>r.taskId.startsWith(task.id+"--review-")&&(r.slot??0)===slot&&r.status==="SUCCEEDED").at(-1)?.output;
+    const built=reviewContext({task,maker:state.maker!,upstream,limit:this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS,slot,slots,previousFindings:previous});
+    const run:RunTask={projectId:plan.projectId,taskId:this.reviewTaskId(task,version,slot),agentRole:review.role,department:review.department,kind:"review",reviewedTaskId:task.id,slot,inputRefs:[...task.inputRefs,"execution:"+task.id],system:config.system,prompt:built.prompt,maxTokens:review.maxTokens,contract:config.contract,contextRefs:this.refs(built.manifest)};
+    return this.execute(plan,review,run,task.id,counters);
+   });
+   const settled=await Promise.allSettled(runs.map(start=>start()));
+   const failure=settled.find((x):x is PromiseRejectedResult=>x.status==="rejected");
+   const parked=settled.find(x=>x.status==="fulfilled"&&typeof x.value==="string") as PromiseFulfilledResult<Pause>|undefined;
+   counters.reviewRuns+=settled.filter(x=>x.status==="fulfilled"&&typeof x.value!=="string").length;
+   if(failure)throw failure.reason;
+   if(parked)return parked.value;
   }
  }
 
- private async fail(plan:ProjectPlanValue,task:TaskPlan,error:unknown){
+ private async fail(plan:ProjectPlanValue,task:TaskPlanValue,error:unknown){
   const message=redactError(error),at=new Date().toISOString();
   await this.state.memory.recordStatus(plan.projectId,task.id,"BLOCKED",message);
   await this.state.memory.append(plan.projectId,"BLOCKERS.md","\n## "+task.id+" — run failure\n\n"+message+"\n");
   await this.state.checkpoints.save(plan.projectId,{taskId:task.id,at,status:"BLOCKED",completed:[],remaining:["resolve: "+message.slice(0,200)],artifactRefs:[],decisionRefs:[],compactContext:message,inputTokens:0,outputTokens:0});
+  this.emit(plan.projectId,"task.blocked",{taskId:task.id,detail:message});
  }
 
  async run(input:ProjectPlanInput):Promise<ProjectRunSummary>{
   const plan=ProjectPlan.parse(input);this.validate(plan);
   if(plan.workspace)await new LocalRepoWorkspace(plan.workspace.path).validate({requireGit:plan.workspace.autoCommit});
   await this.state.memory.init(plan);
+  this.runId=randomUUID();this.metrics=new RunMetrics(this.options.now);
+  this.emit(plan.projectId,"run.started",{detail:plan.mode});
   const states=new Map<string,string>(),completed=new Set<string>(),paused=new Set<string>(),approvalRequired=new Set<string>(),failed=new Set<string>(),skipped=new Set<string>();
-  const pending=new Map(plan.tasks.map(t=>[t.id,t])),counters:Counters={reviewRuns:0,revisions:0,failovers:0};
+  const pending=new Map(plan.tasks.map(t=>[t.id,t])),counters:Counters={reviewRuns:0,revisions:0,disagreements:0,failovers:0};
   const initialRecords=await this.state.executions.list(plan.projectId);
-  for(const task of plan.tasks)if(this.history(initialRecords,task).complete){
+  for(const task of plan.tasks)if(this.history(initialRecords,task,plan).complete){
    completed.add(task.id);pending.delete(task.id);skipped.add(task.id);states.set(task.id,"DONE");
    await this.state.memory.recordStatus(plan.projectId,task.id,"SKIPPED_ALREADY_COMPLETE");
   }
-  await this.state.memory.syncPlan(plan,states);
+  const planWrite=new Mutex(),syncPlan=()=>planWrite.run(()=>this.state.memory.syncPlan(plan,states));
+  await syncPlan();
+  const readyAt=new Map<string,number>(),running=new Map<string,Promise<void>>(),levels=new Map<string,number>();
+  const maxParallel=Math.max(1,this.options.maxParallelTasks??DEFAULT_PARALLEL),agingMs=this.options.agingMs??DEFAULT_AGING_MS;
+  const level=(task:TaskPlanValue):number=>{
+   const known=levels.get(task.id);if(known!=null)return known;
+   const value=1+Math.max(0,...task.dependencies.map(dep=>level(plan.tasks.find(t=>t.id===dep)!)));levels.set(task.id,value);return value;
+  };
   let waves=0;
-  while(pending.size){
-   const ready=[...pending.values()].filter(t=>t.dependencies.every(dep=>completed.has(dep)));
-   if(!ready.length)break;
-   waves++;
-   await Promise.all(ready.map(async task=>{
-    try{
-     const outcome=await this.advance(plan,task,counters);
-     if(outcome==="DONE"){
-      completed.add(task.id);states.set(task.id,"DONE");
-      await this.state.memory.recordStatus(plan.projectId,task.id,"DONE");
-      const checkpoint=await this.state.checkpoints.load(plan.projectId,task.id);
-      if(checkpoint)await this.state.checkpoints.save(plan.projectId,{...checkpoint,at:new Date().toISOString(),status:"DONE",remaining:[]});
-     }
-     else if(outcome==="PAUSED"){paused.add(task.id);states.set(task.id,"PAUSED_CAPACITY");}
-     else{approvalRequired.add(task.id);states.set(task.id,"APPROVAL_REQUIRED");}
-    }catch(error){failed.add(task.id);states.set(task.id,"BLOCKED");await this.fail(plan,task,error);}
-   }));
-   for(const task of ready)pending.delete(task.id);
-   await this.state.memory.syncPlan(plan,states);
-  }
+  const execute=async(task:TaskPlanValue)=>{
+   this.metrics.taskStarted(task.id);this.emit(plan.projectId,"task.started",{taskId:task.id});
+   let outcome:TaskOutcome;
+   try{
+    const result=await this.advance(plan,task,counters);
+    if(result==="DONE"){
+     outcome="DONE";completed.add(task.id);states.set(task.id,"DONE");waves=Math.max(waves,level(task));
+     await this.state.memory.recordStatus(plan.projectId,task.id,"DONE");
+     const checkpoint=await this.state.checkpoints.load(plan.projectId,task.id);
+     if(checkpoint)await this.state.checkpoints.save(plan.projectId,{...checkpoint,at:new Date().toISOString(),status:"DONE",remaining:[]});
+    }else if(result==="PAUSED"){outcome="PAUSED";paused.add(task.id);states.set(task.id,"PAUSED_CAPACITY");}
+    else{outcome="APPROVAL_REQUIRED";approvalRequired.add(task.id);states.set(task.id,"APPROVAL_REQUIRED");}
+   }catch(error){outcome="FAILED";failed.add(task.id);states.set(task.id,"BLOCKED");await this.fail(plan,task,error);}
+   this.metrics.taskFinished(task.id,outcome);this.emit(plan.projectId,"task.finished",{taskId:task.id,detail:outcome});
+   await syncPlan();
+  };
+  // Event-driven DAG scheduler: a task starts the moment its dependencies are done and a project slot is free.
+  await new Promise<void>(resolve=>{
+   const tick=()=>{
+    while(running.size<maxParallel){
+     const ready=[...pending.values()].filter(t=>t.dependencies.every(dep=>completed.has(dep)));
+     for(const task of ready)if(!readyAt.has(task.id)){readyAt.set(task.id,this.now());this.metrics.taskReady(task.id);}
+     const next=pickNext(ready,readyAt,this.now(),agingMs);
+     if(!next)break;
+     pending.delete(next.id);
+     const job=execute(next).catch(()=>undefined).finally(()=>{running.delete(next.id);this.slots.notify();tick();});
+     running.set(next.id,job);
+    }
+    if(running.size===0)resolve();
+   };
+   tick();
+  });
   const waiting=[...pending.keys()];
   for(const id of waiting)states.set(id,"WAITING");
-  await this.state.memory.syncPlan(plan,states);
+  await syncPlan();
   const budget=budgetReport(plan.budget,await this.state.executions.list(plan.projectId));
-  return {projectId:plan.projectId,completed:[...completed],paused:[...paused],approvalRequired:[...approvalRequired],failed:[...failed],waiting,skipped:[...skipped],waves,...counters,budget};
+  this.emit(plan.projectId,"run.finished",{detail:failed.size?"failed":paused.size||approvalRequired.size||waiting.length?"parked":"done"});
+  await this.telemetry;
+  return {projectId:plan.projectId,runId:this.runId,completed:[...completed],paused:[...paused],approvalRequired:[...approvalRequired],failed:[...failed],waiting,skipped:[...skipped],waves,...counters,budget,metrics:this.metrics.snapshot()};
  }
 }

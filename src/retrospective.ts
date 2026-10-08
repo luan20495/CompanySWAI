@@ -41,9 +41,9 @@ export function buildRetrospective(projectId:string,records:ExecutionRecordValue
  const failedRecords=terminal.filter(r=>r.status==="FAILED"),failures=failedRecords.length,paused=terminal.filter(r=>r.status==="PAUSED_CAPACITY").length;
  const settled=settledRecords(records),actualCost=settled.reduce((s,r)=>s+(r.actualCost??0),0),estimatedCost=settled.reduce((s,r)=>s+(r.estimatedCost??0),0);
  const succeeded=records.filter(r=>r.status==="SUCCEEDED");
- const reviewRounds=succeeded.filter(r=>/--review-\d+$/.test(r.taskId)).length;
+ const reviewRounds=succeeded.filter(r=>/--review-\d+(?:-\d+)?$/.test(r.taskId)).length;
  const revisionsByRole=new Map<string,number>();
- for(const review of succeeded.filter(r=>/--review-\d+$/.test(r.taskId)&&/^\s*CHANGES_REQUIRED/i.test(r.output.trimStart()))){
+ for(const review of succeeded.filter(r=>/--review-\d+(?:-\d+)?$/.test(r.taskId)&&/^\s*CHANGES_REQUIRED/i.test(r.output.trimStart()))){
   const makerId=baseTaskId(review.taskId),maker=succeeded.find(r=>r.taskId===makerId);
   if(maker)revisionsByRole.set(maker.agentRole,(revisionsByRole.get(maker.agentRole)??0)+1);
  }

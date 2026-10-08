@@ -8,7 +8,8 @@ import {MEMORY_FILES} from "../src/project-memory.js";
 import {compileBriefToProjectPlan} from "../src/plan-compiler.js";
 import {condense,contractViolations,parseAgentOutput,section} from "../src/output-parser.js";
 import {MarkdownAgentRegistry} from "../src/md-agent-loader.js";
-import {compliant,fakeAnthropicKey,isReviewRequest,pass,plan,reviewer,selectorFor,task,tmpState,usage} from "./helpers.js";
+import {dryRunSelector} from "../src/providers/dry-run.js";
+import {compliant,fakeAnthropicKey,isReviewRequest,plan,reviewer,selectorFor,task,tmpState,usage} from "./helpers.js";
 
 const sections=["Deliverables","Decisions","Evidence","Blockers","Handoff"];
 
@@ -32,8 +33,8 @@ test("the contract is defined once in Markdown and every compiled task enforces 
  assert.match(contract,/sections: \["Deliverables","Decisions","Evidence","Blockers","Handoff"\]/);
  const compiled=await compileBriefToProjectPlan({projectId:"c1",objective:"Build a secure backend service for payments",capabilities:["backend","security-critical"],complexity:4});
  for(const t of compiled.tasks){
-  assert.deepEqual(t.contract.sections,sections);assert.ok(t.system.includes("Output contract"));
-  if(t.review){assert.equal(t.review.contract.verdict,true);assert.deepEqual(t.review.contract.sections,["Evidence","Blockers"]);}
+  assert.deepEqual(t.contract.sections.slice(0,5),sections);assert.ok(t.system.includes("Output contract"));
+  if(t.review){assert.equal(t.review.contract.verdict,true);assert.deepEqual(t.review.contract.sections.slice(0,2),["Evidence","Blockers"]);}
  }
 });
 
@@ -65,18 +66,21 @@ test("reviewer PASS without evidence is rejected by the contract",async()=>{
 
 test("all ten project memory files exist from the first moment and agent outputs persist automatically",async()=>{
  const state=await tmpState(),compiled=await compileBriefToProjectPlan({projectId:"mem",objective:"Build a secure backend service ready for deployment",capabilities:["backend","deployment","security-critical"],complexity:4});
- const selector=selectorFor(request=>usage(isReviewRequest(request)?pass("reviewed against requirements"):compliant("body for "+request.prompt.slice(0,30).replace(/\n/g," "),{decisions:"Decision from "+request.system.length,handoff:"hand over"})));
- const summary=await new ProjectOrchestrator(selector,state).run(compiled);
+ const summary=await new ProjectOrchestrator(dryRunSelector({requestChangesFor:["backend-engineer"]}),state).run(compiled);
  assert.equal(summary.completed.length,compiled.tasks.length);assert.deepEqual(summary.failed,[]);
  const dir=join(state.root,"projects","mem");
  assert.deepEqual((await readdir(dir)).sort(),[...MEMORY_FILES].sort());
  const read=(name:(typeof MEMORY_FILES)[number])=>state.memory.read("mem",name);
- assert.match(await read("REQUIREMENTS.md"),/business-analyst/);assert.match(await read("REQUIREMENTS.md"),/product-lead/);
- assert.match(await read("ARCHITECTURE.md"),/tech-lead/);assert.match(await read("QA.md"),/qa-engineer/);
- assert.match(await read("REVIEWS.md"),/reviewing backend-engineer/);assert.match(await read("DECISIONS.md"),/Decision from/);
- assert.match(await read("HANDOFFS.md"),/hand over/);assert.match(await read("HANDOFFS.md"),/backend-engineer \(summary\)/,"unrouted artifacts are summarised");
+ assert.match(await read("REQUIREMENTS.md"),/business-analyst/);assert.match(await read("REQUIREMENTS.md"),/product-lead/);assert.match(await read("REQUIREMENTS.md"),/REQ-001/);
+ assert.match(await read("ARCHITECTURE.md"),/tech-lead/);assert.match(await read("QA.md"),/qa-engineer/);assert.match(await read("QA.md"),/Requirement → test traceability/);
+ assert.match(await read("REVIEWS.md"),/reviewing backend-engineer/);assert.match(await read("REVIEWS.md"),/CHANGES_REQUIRED/);
+ assert.match(await read("DECISIONS.md"),/DEC-001/);
+ assert.match(await read("HANDOFFS.md"),/backend-engineer \(ART-\d+\) — summary/,"unrouted artifacts are summarised");
  assert.match(await read("STATUS.md"),/SUCCEEDED/);
  const plan=await read("PLAN.md");assert.equal(plan.split("\n").filter(l=>l.startsWith("- [x]")).length,compiled.tasks.length);
+ // memory stays a readable summary: one block per task per file, however many revisions happened
+ const reqs=await read("REQUIREMENTS.md");assert.equal((reqs.match(/<!-- begin:output:business-analyst -->/g)??[]).length,1);
+ assert.ok(reqs.length<30000);
  // structured records mirror the Markdown
  assert.ok((await readdir(join(state.root,"artifacts","mem"))).length>=compiled.tasks.length);
  assert.ok((await readdir(join(state.root,"decisions","mem"))).length>0);assert.ok((await readdir(join(state.root,"handoffs","mem"))).length>0);assert.ok((await readdir(join(state.root,"reviews","mem"))).length>0);
@@ -91,7 +95,7 @@ test("blockers reported by agents are persisted to BLOCKERS.md and the blocker s
 
 test("memory writes are idempotent so recovery never duplicates entries",async()=>{
  const state=await tmpState();await state.memory.init(plan("idem",[task("a")]));
- await state.memory.recordDecision("idem","a","exec-1","Use Postgres.");await state.memory.recordDecision("idem","a","exec-1","Use Postgres.");
+ await state.memory.recordDecision("idem","a","DEC-001","Use Postgres.");await state.memory.recordDecision("idem","a","DEC-001","Use Postgres.");
  assert.equal((await state.memory.read("idem","DECISIONS.md")).match(/Use Postgres/g)?.length,1);
  await state.memory.recordStatus("idem","a","X","token "+fakeAnthropicKey());
  assert.doesNotMatch(await state.memory.read("idem","STATUS.md"),/abcdefghij/);

@@ -51,7 +51,7 @@ test("out-of-credit profiles never auto-recover and unavailable ones recover qui
  clock+=10_000_000;
  assert.throws(()=>selector({demand}),/No eligible/);
  const other=build([profile("b")],()=>clock),down=other({demand});other.reportFailure?.(down,new Error("503 service unavailable"));
- assert.throws(()=>other({demand}),/No eligible/);clock+=501;
+ assert.throws(()=>other({demand}),/cooling down/);clock+=501;
  assert.equal(other({demand}).profile.id,"b");
 });
 

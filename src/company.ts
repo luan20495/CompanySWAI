@@ -46,7 +46,7 @@ export type PolicyDefinition=z.infer<typeof PolicyMeta>;
 const Applies=z.object({appliesWhen:z.string().min(1)});
 const GatesMeta=z.object({
  codeGates:z.record(z.string(),Applies),architectureCategories:z.record(z.string(),Applies),
- lenses:z.record(z.string(),z.object({validator:z.string().optional(),skill:z.string().optional(),instruction:z.string().min(1)})),
+ lenses:z.record(z.string(),z.object({validator:z.string().optional(),skill:z.string().optional(),sections:z.array(z.string()).default([]),instruction:z.string().min(1)})),
  qaStatuses:z.array(z.string()).min(1)
 });
 export type GatesDefinition=z.infer<typeof GatesMeta>;

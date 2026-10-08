@@ -6,6 +6,8 @@ import {CompanyExperienceStore} from "./company-experience.js";
 import {FileExecutionStore} from "./execution-store.js";
 import {ProjectMemoryStore} from "./project-memory.js";
 import {FileRetrospectiveStore} from "./retrospective.js";
+import {ResearchStore,TraceabilityStore} from "./traceability.js";
+import {TelemetryStore} from "./telemetry.js";
 
 /** Every persisted store under one configurable state directory, so a run, its resume and its tests share one root. */
 export class CompanyState{
@@ -13,6 +15,7 @@ export class CompanyState{
  readonly memory:ProjectMemoryStore;readonly artifacts:FileArtifactStore;readonly decisions:FileDecisionStore;
  readonly handoffs:FileHandoffStore;readonly reviews:FileReviewStore;readonly blockers:FileBlockerStore;
  readonly retrospectives:FileRetrospectiveStore;readonly experience:CompanyExperienceStore;
+ readonly traceability:TraceabilityStore;readonly research:ResearchStore;readonly telemetry:TelemetryStore;
  constructor(readonly root=".companyswai",companyRoot="company"){
   this.executions=new FileExecutionStore(join(root,"executions"));
   this.checkpoints=new FileCheckpointStore(join(root,"checkpoints"));
@@ -25,5 +28,8 @@ export class CompanyState{
   this.blockers=new FileBlockerStore(join(root,"blockers"));
   this.retrospectives=new FileRetrospectiveStore(join(root,"retrospectives"));
   this.experience=new CompanyExperienceStore(join(root,"company-experience.json"));
+  this.traceability=new TraceabilityStore(join(root,"traceability"));
+  this.research=new ResearchStore(join(root,"research"));
+  this.telemetry=new TelemetryStore(join(root,"telemetry"));
  }
 }

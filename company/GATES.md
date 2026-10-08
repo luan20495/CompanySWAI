@@ -21,8 +21,8 @@ architectureCategories: {
  "backward-compatibility":{"appliesWhen":"signal:brownfield|migration|legacy"}
 }
 lenses: {
- "architecture":{"validator":"architecture-review","instruction":"Review this architecture against the applicable categories listed below before any implementation starts. Use the exact section format required by the architecture-review contract."},
- "security":{"skill":"security","instruction":"Apply the security lens: threat model, input validation, authorization, secrets handling, dependency risk. Missing evidence is CHANGES_REQUIRED."}
+ "architecture":{"validator":"architecture-review","sections":["Architecture Review","Decisions","Unresolved Risks"],"instruction":"Review this architecture against the applicable categories before any implementation starts. In addition to the verdict line, Evidence and Blockers, emit exactly these sections. `## Architecture Review`: one line per applicable category, `- <category>: PASS|RISK|FAIL — one-sentence finding` (PASS = adequate, RISK = acceptable only with a named mitigation, FAIL = must change). `## Decisions`: the architectural decisions you confirm or require, one `- ` bullet each. `## Unresolved Risks`: one `- ` bullet per remaining risk (every RISK category must appear here), or `None.`. Any FAIL category requires the verdict CHANGES_REQUIRED."},
+ "security":{"skill":"security","sections":[],"instruction":"Apply the security lens: threat model, input validation, authorization, secrets handling, dependency risk. Missing evidence is CHANGES_REQUIRED."}
 }
 qaStatuses: ["PASS","FAIL","BLOCKED","NOT_APPLICABLE"]
 ---

@@ -5,10 +5,16 @@ import type {CompanyState} from "./state.js";
 import {condense,contractViolations,isNone,parseAgentOutput,parseReviewVerdict,type ContractRequirement} from "./output-parser.js";
 import {LocalRepoWorkspace,WorkspaceError,parseFilePatches,type CheckCommandSpec} from "./repo-workspace.js";
 import {redact,redactError} from "./secrets.js";
+import {runValidators} from "./validators.js";
+import {parseArchitectureReview,parseQa,parseRequirements,parseResearch} from "./structured.js";
 
 export type RunTask={
  projectId:string;taskId:string;agentRole:string;department?:string;kind:"maker"|"review";produces?:string[];
  inputRefs:string[];system:string;prompt:string;maxTokens:number;contract?:ContractRequirement;
+ /** Facts only the orchestrator knows (for example the requirement IDs QA must cover); passed to validators. */
+ validationContext?:{requirementIds?:string[]};
+ /** Which context this execution was built from: the proof of what it was (and was not) given. */
+ contextRefs?:string[];slot?:number;profileId?:string;reviewedTaskId?:string;
  estimatedCost?:number;inputCostPerMillion?:number;outputCostPerMillion?:number;billing?:"metered"|"subscription";
  workspace?:{path:string;checks:CheckCommandSpec[];autoCommit:boolean};
  handoffTo?:Array<{taskId:string;role:string}>;
@@ -27,16 +33,25 @@ const clip=(id:string,length=128)=>id.slice(0,length);
  *  generate()  provider call -> CHECKPOINTED record holding the raw output
  *  finalize()  patches, checks, artifacts, memory -> SUCCEEDED record
  * A CHECKPOINTED record without a terminal record is picked up again by finalize() on resume.
+ * Every call is a fresh request: only {system, prompt} reach the provider, never earlier conversation.
  */
 export class TaskRunner{
  constructor(private state:CompanyState){}
 
  private base(task:RunTask,id:string,startedAt:string,provider:{name:string;model:string}){
-  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost,billing:task.billing??"metered"};
+  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost,billing:task.billing??"metered",profileId:task.profileId,slot:task.slot,contextRefs:task.contextRefs??[]};
  }
 
  async run(task:RunTask,provider:ModelProvider){
   return this.finalize(task,await this.generate(task,provider));
+ }
+
+ private problemsIn(task:RunTask,text:string){
+  const requirement=task.contract??{sections:[],verdict:false};
+  return [
+   ...contractViolations(text,requirement),
+   ...runValidators(requirement.validators??[],text,{params:requirement.params??{},requirementIds:task.validationContext?.requirementIds}).problems
+  ];
  }
 
  async generate(task:RunTask,provider:ModelProvider):Promise<ExecutionRecordValue>{
@@ -44,25 +59,24 @@ export class TaskRunner{
   await this.state.memory.recordStatus(task.projectId,task.taskId,"STARTED",provider.name+"/"+provider.model);
   await this.state.executions.append({...base,status:"STARTED"});
   try{
-   let response=await provider.generate({system:task.system,prompt:task.prompt,maxTokens:task.maxTokens});
+   const meta={taskId:task.taskId,kind:task.kind,sections:task.contract?.sections??[],validators:task.contract?.validators??[],params:task.contract?.params??{},requirementIds:task.validationContext?.requirementIds,slot:task.slot};
+   let response=await provider.generate({system:task.system,prompt:task.prompt,maxTokens:task.maxTokens,meta});
    let inputTokens=response.inputTokens,outputTokens=response.outputTokens,answeredBy=response.model;
-   const requirement=task.contract??{sections:[],verdict:false};
-   let problems=contractViolations(response.text,requirement);
+   let problems=this.problemsIn(task,response.text);
    if(problems.length){
     // One repair round: the model sees exactly what the contract found wrong.
-    const repair=task.prompt+"\n\n--- CONTRACT VIOLATION ---\nYour previous response did not satisfy the output contract: "+problems.join("; ")+".\nRe-emit the complete response now, with every required section.\n\n--- PREVIOUS RESPONSE ---\n"+response.text.slice(0,REPAIR_ECHO_CHARS);
-    response=await provider.generate({system:task.system,prompt:repair,maxTokens:task.maxTokens});
+    const repair=task.prompt+"\n\n--- CONTRACT VIOLATION ---\nYour previous response did not satisfy the output contract:\n- "+problems.join("\n- ")+"\nRe-emit the complete response now, with every required section and format.\n\n--- PREVIOUS RESPONSE ---\n"+response.text.slice(0,REPAIR_ECHO_CHARS);
+    response=await provider.generate({system:task.system,prompt:repair,maxTokens:task.maxTokens,meta});
     inputTokens+=response.inputTokens;outputTokens+=response.outputTokens;answeredBy=response.model??answeredBy;
-    problems=contractViolations(response.text,requirement);
+    problems=this.problemsIn(task,response.text);
     if(problems.length){
      const failedAt=new Date().toISOString(),error=new ContractViolationError(problems),actualCost=this.cost(task,inputTokens,outputTokens);
-     await this.state.executions.append({...base,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,actualCost,error:error.message});
+     await this.state.executions.append({...base,model:answeredBy??base.model,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,actualCost,error:error.message});
      await this.state.memory.recordStatus(task.projectId,task.taskId,"FAILED",error.message);
      throw error;
     }
    }
-   const record=await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,actualCost:this.cost(task,inputTokens,outputTokens)});
-   return record;
+   return await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,actualCost:this.cost(task,inputTokens,outputTokens)});
   }catch(error){
    if(!(error instanceof ContractViolationError)){
     const message=redactError(error);
@@ -75,6 +89,25 @@ export class TaskRunner{
 
  private cost(task:RunTask,inputTokens:number,outputTokens:number){
   return task.inputCostPerMillion!=null&&task.outputCostPerMillion!=null?inputTokens/1e6*task.inputCostPerMillion+outputTokens/1e6*task.outputCostPerMillion:undefined;
+ }
+
+ /** Parsed structured sections go to their stores: research citations, requirement IDs, QA traceability, architecture review. */
+ private async persistStructured(task:RunTask,output:string){
+  const {state}=this,validators=task.contract?.validators??[],project=task.projectId,params=task.contract?.params??{};
+  if(validators.includes("research-evidence")){
+   const parsed=parseResearch(output),run=runValidators(["research-evidence"],output,{params});
+   await state.research.save(project,task.taskId,parsed,params.externalResearch===true,run.notes);
+  }
+  if(validators.includes("requirements-ids"))await state.traceability.setRequirements(project,task.taskId,parseRequirements(output).requirements);
+  if(validators.includes("qa-traceability")){
+   const qa=parseQa(output);
+   if(qa.overall)await state.traceability.setTests(project,task.taskId,qa.overall,qa.tests);
+   await state.memory.recordTraceability(project,await state.traceability.renderMatrix(project));
+  }
+  if(validators.includes("architecture-review")){
+   const review=parseArchitectureReview(output),verdict=parseReviewVerdict(output)??"CHANGES_REQUIRED";
+   await state.traceability.addArchitectureReview(project,task.reviewedTaskId??task.taskId,verdict,review.categories,review.unresolvedRisks);
+  }
  }
 
  async finalize(task:RunTask,checkpointed:ExecutionRecordValue):Promise<ExecutionRecordValue>{
@@ -90,31 +123,33 @@ export class TaskRunner{
    }
    const parsed=parseAgentOutput(output),artifactId=clip(task.taskId+"-"+id.slice(0,8));
    await state.artifacts.save(task.projectId,artifactId,{id:artifactId,projectId:task.projectId,taskId:task.taskId,kind:patches.length?"code":"document",title:task.agentRole+" output",content:output,createdAt:finishedAt});
+   const displayId=await state.traceability.addArtifact(task.projectId,task.taskId,id,patches.length?"code":"document",artifactId);
+   await this.persistStructured(task,output);
    const decisionRefs:string[]=[],reviewRefs:string[]=[],blockerRefs:string[]=[],handoffRefs:string[]=[];
    if(parsed.decision&&!isNone(parsed.decision)){
-    const decisionId=clip(task.taskId+"-decision-"+id.slice(0,8));
-    await state.decisions.save(task.projectId,decisionId,{id:decisionId,projectId:task.projectId,taskId:task.taskId,title:task.agentRole+" decisions",decision:parsed.decision,rationale:"Captured from structured agent output.",createdAt:finishedAt});
-    decisionRefs.push(decisionId);await state.memory.recordDecision(task.projectId,task.taskId,id,parsed.decision);
+    const decisionId=clip(task.taskId+"-decision-"+id.slice(0,8)),display=await state.traceability.addDecision(task.projectId,task.taskId,id,parsed.decision);
+    await state.decisions.save(task.projectId,decisionId,{id:decisionId,projectId:task.projectId,taskId:task.taskId,title:display+" — "+task.agentRole+" decisions",decision:parsed.decision,rationale:"Captured from structured agent output.",createdAt:finishedAt});
+    decisionRefs.push(decisionId);await state.memory.recordDecision(task.projectId,task.taskId,display,parsed.decision);
    }
    if(parsed.blockers&&!isNone(parsed.blockers)){
     const blockerId=clip(task.taskId+"-blocker-"+id.slice(0,8));
     await state.blockers.save(task.projectId,blockerId,{id:blockerId,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,body:parsed.blockers,status:"OPEN",createdAt:finishedAt});
-    blockerRefs.push(blockerId);await state.memory.recordBlocker(task.projectId,task.taskId,id,parsed.blockers);
+    blockerRefs.push(blockerId);await state.memory.recordBlocker(task.projectId,task.taskId,parsed.blockers);
    }
    if(task.kind==="review"){
-    const verdict=parseReviewVerdict(output),reviewedTask=task.taskId.replace(/--review-\d+$/,"");
+    const verdict=parseReviewVerdict(output),reviewedTask=task.reviewedTaskId??task.taskId.replace(/--review-\d+(?:-\d+)?$/,"");
     if(verdict){
      const reviewId=clip(task.taskId+"-"+id.slice(0,8));
      await state.reviews.save(task.projectId,reviewId,{id:reviewId,projectId:task.projectId,taskId:reviewedTask,reviewerRole:task.agentRole,verdict,body:output,createdAt:finishedAt});
-     reviewRefs.push(reviewId);await state.memory.recordReview(task.projectId,reviewedTask,task.taskId,id,verdict,output);
+     reviewRefs.push(reviewId);await state.memory.recordReview(task.projectId,reviewedTask,task.taskId,verdict,output);
     }
    }else{
-    await state.memory.recordOutput(task.projectId,{taskId:task.taskId,agentRole:task.agentRole,produces:task.produces??[]},id,output);
+    await state.memory.recordOutput(task.projectId,{taskId:task.taskId,agentRole:task.agentRole,produces:task.produces??[],sections:task.contract?.sections??[]},displayId,output);
     const summary=parsed.handoff??condense(output,1200);
     for(const target of task.handoffTo??[]){
      const handoffId=clip(task.taskId+"-to-"+target.taskId+"-"+id.slice(0,6));
      await state.handoffs.save(task.projectId,handoffId,{id:handoffId,projectId:task.projectId,taskId:task.taskId,fromRole:task.agentRole,toRole:target.role,summary,refs:[artifactId],createdAt:finishedAt});
-     handoffRefs.push("handoff:"+handoffId);await state.memory.recordHandoff(task.projectId,task.taskId,target.taskId,id,summary);
+     handoffRefs.push("handoff:"+handoffId);await state.memory.recordHandoff(task.projectId,task.taskId,target.taskId,summary);
     }
    }
    const refs=[artifactId,...changedFiles.map(x=>"file:"+x),...(commitSha?["commit:"+commitSha]:[]),...handoffRefs];

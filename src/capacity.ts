@@ -6,7 +6,7 @@ export type CapacityProfile={
  /** "subscription" profiles (e.g. Claude Code) have no per-token price: cost is not applicable, never $0. */
  billing?:"metered"|"subscription";
 };
-export type TaskDemand={capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number};
+export type TaskDemand={capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number;minQualityTier?:number};
 
 export function estimateCost(p:CapacityProfile,d:TaskDemand){
  if(p.billing==="subscription"||p.inputCostPerMillion==null||p.outputCostPerMillion==null)return undefined;

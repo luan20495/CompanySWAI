@@ -14,7 +14,7 @@ export class ApprovalRequiredError extends Error{
 }
 
 /** Review executions are accounted to the task they review. */
-export const baseTaskId=(taskId:string)=>taskId.replace(/--review-\d+$/,"");
+export const baseTaskId=(taskId:string)=>taskId.replace(/--review-\d+(?:-\d+)?$/,"");
 /**
  * Money is spent once a model call returned. Each execution id counts once, through its latest
  * record that carries usage (CHECKPOINTED, then SUCCEEDED, or FAILED when finalization failed).
