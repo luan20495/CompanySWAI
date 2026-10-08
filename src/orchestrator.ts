@@ -190,7 +190,7 @@ export class ProjectOrchestrator{
   const pending=this.unfinalized(await this.state.executions.list(plan.projectId),task.taskId);
   if(pending)return this.runner.finalize(task,pending);
   const tried:ProviderSelection[]=[],maxAttempts=this.options.maxProviderAttempts??DEFAULT_PROVIDER_ATTEMPTS,maxWait=this.options.maxCooldownWaitMs??DEFAULT_COOLDOWN_WAIT_MS;
-  let waitedMs=0,failures=0;
+  let waitedMs=0,failures=0;const everTried=new Set<string>();
   for(;;){
    let selection:ProviderSelection;
    try{selection=this.selectProvider(this.requestFor(target,tried));}
@@ -222,6 +222,9 @@ export class ProjectOrchestrator{
     return "APPROVAL_REQUIRED";
    }
    const profileId=selection.profile.id??selection.profile.provider+"/"+selection.profile.model;
+   // The same profile again after a failure is a retry (it recovered from its cooldown); a different one is a failover.
+   if(everTried.has(profileId))this.emit(plan.projectId,"provider.retry",{taskId:task.taskId,profileId});
+   everTried.add(profileId);
    const priced={...task,profileId,billing:selection.profile.billing??"metered",estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
    this.emit(plan.projectId,"provider.selected",{taskId:task.taskId,profileId,provider:selection.provider.name,model:selection.provider.model,detail:selection.policy});
    if(selection.qualityShortfall){this.emit(plan.projectId,"provider.quality-shortfall",{taskId:task.taskId,profileId,detail:"no profile met the requested quality tier; routed to the best available"});await this.state.memory.recordStatus(plan.projectId,task.taskId,"QUALITY_SHORTFALL","routed to "+profileId+" below the requested quality tier ("+(target.minQualityTier??"n/a")+")");}

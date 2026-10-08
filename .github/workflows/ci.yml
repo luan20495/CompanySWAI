@@ -19,3 +19,4 @@ jobs:
       - run: npm run check
       - run: npm run doctor
       - run: npm run company -- examples/project-brief.json --dry-run
+      - run: npm run benchmark

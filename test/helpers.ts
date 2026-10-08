@@ -44,3 +44,12 @@ export function rendezvous(n:number,timeoutMs=2000){
  const release=()=>{open=true;for(const w of waiters.splice(0))w();};
  return ()=>open?Promise.resolve():new Promise<void>(resolve=>{waiters.push(resolve);arrived++;if(arrived>=n)release();else setTimeout(release,timeoutMs).unref();});
 }
+
+/** Invariant for every failure scenario: nothing that succeeded was paid for twice. */
+export function assertNoDuplicateWork(records:Array<{id:string;taskId:string;status:string;output:string}>,revisionsAllowed=0){
+ const ids=records.filter(r=>r.status==="SUCCEEDED").map(r=>r.id);
+ if(new Set(ids).size!==ids.length)throw new Error("an execution was finalized twice");
+ const makers=new Map<string,number>();
+ for(const r of records)if(r.status==="SUCCEEDED"&&!/--review-/.test(r.taskId))makers.set(r.taskId,(makers.get(r.taskId)??0)+1);
+ for(const [taskId,count] of makers)if(count>1+revisionsAllowed)throw new Error("task "+taskId+" succeeded "+count+" times");
+}

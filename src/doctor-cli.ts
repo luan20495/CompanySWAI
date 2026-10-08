@@ -80,6 +80,7 @@ for(const pattern of [...learning.temporaryPatterns,...learning.protectedTopics,
 const brief=ProjectBrief.parse(JSON.parse(await readFile("examples/project-brief.json","utf8")));
 const plan=await compileBriefToProjectPlan(brief);
 ProjectPlan.parse(JSON.parse(await readFile("examples/project-plan.json","utf8")));
+await compileBriefToProjectPlan(ProjectBrief.parse(JSON.parse(await readFile("benchmarks/commerce-brief.json","utf8"))));
 const profiles=await loadRuntimeConfig("config/providers.example.json");
 check(profiles.length>=2,"config/providers.example.json should demonstrate multiple profiles");
 

@@ -1,0 +1,10 @@
+{
+  "projectId": "benchmark-commerce",
+  "objective": "Build a secure online store for small merchants: a web storefront with product search and checkout, backend APIs for orders, payments and inventory, and deployable infrastructure with monitoring. Customers pay by card and expect accessible pages.",
+  "capabilities": ["backend", "web-ui", "deployment", "security-critical"],
+  "complexity": 4,
+  "mode": "MAX_QUALITY",
+  "signals": ["postgres", "payments"],
+  "research": {"enabled": true, "maxSourceAgeDays": 730},
+  "budget": {"maxProjectCost": 25, "projectApprovalThreshold": 50}
+}
