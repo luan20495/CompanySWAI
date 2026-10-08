@@ -146,3 +146,17 @@ test("the shipped example brief runs the whole pipeline in dry-run mode",async()
  const result=await runAutonomous({brief:example},{state,selector:dryRunSelector(),dryRun:true,knownRoles:[],knownSkills:[]});
  assert.equal(result.phase,"DONE");assert.deepEqual(result.summary?.failed,[]);assert.ok(result.final?.status.startsWith("ACCEPTED"));
 });
+
+test("supervised operation waits out capacity problems with backoff and resumes; people-needed outcomes are returned, not retried",async()=>{
+ const {superviseAutonomous}=await import("../src/autonomous.js");
+ const state=await tmpState();let attempts=0;const pauses:number[]=[];
+ const outage=()=>createCapacitySelector([{id:"gone",provider:"x",model:"m",state:"RATE_LIMITED",resetAt:new Date(Date.now()+3_600_000).toISOString(),capabilities:["reasoning","product","architecture","coding","design","deployment","testing","review"],contextWindow:1000,maxConcurrency:1}],()=>{throw new Error("unreachable");});
+ const result=await superviseAutonomous(async()=>{attempts++;return runAutonomous({brief},{state,selector:attempts<3?outage():priced(),knownRoles:[],knownSkills:[],orchestrator:{maxCooldownWaitMs:1}});},{minPauseMs:10,maxPauseMs:40,sleep:async ms=>{pauses.push(ms);}});
+ assert.equal(attempts,3);assert.deepEqual(pauses,[10,20]);assert.equal(result.phase,"DONE");assert.ok(result.final?.status.startsWith("ACCEPTED"));
+ const approvalState=await tmpState();let passes=0;
+ const needsPerson=await superviseAutonomous(async()=>{passes++;return runAutonomous({brief:{...brief,projectId:"auto-sup",budget:{projectApprovalThreshold:0.0001}}},{state:approvalState,selector:priced(),knownRoles:[],knownSkills:[]});},{sleep:async()=>undefined});
+ assert.equal(passes,1);assert.equal(needsPerson.phase,"APPROVAL");
+ const deadlineState=await tmpState();let tries=0,clock=0;
+ const giveUp=await superviseAutonomous(async()=>{tries++;return runAutonomous({brief:{...brief,projectId:"auto-dl"}},{state:deadlineState,selector:outage(),knownRoles:[],knownSkills:[],orchestrator:{maxCooldownWaitMs:1}});},{minPauseMs:100,maxWaitMs:250,now:()=>clock,sleep:async ms=>{clock+=ms;}});
+ assert.ok(tries>=2&&tries<=4,"stops once the allowed total wait would be exceeded ("+tries+")");assert.equal(giveUp.final?.status,"PARKED");
+});

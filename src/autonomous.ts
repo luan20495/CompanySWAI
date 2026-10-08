@@ -134,3 +134,27 @@ export async function runAutonomous(input:AutonomousInput,options:AutonomousOpti
  return {projectId,phase:run!.phase,plan:settled,estimate,summary,final,notes:run!.notes};
 }
 export type {RunStateValue};
+
+export type SuperviseOptions={
+ /** Give up after this long in total (default 6 hours). */
+ maxWaitMs?:number;
+ /** First and largest pause between resumes; the pause doubles after every parked pass. */
+ minPauseMs?:number;maxPauseMs?:number;
+ sleep?:(ms:number)=>Promise<void>;now?:()=>number;
+ onPass?:(result:AutonomousResult,pass:number)=>void;
+};
+/**
+ * Unattended operation: run the pipeline, and while it is only parked for capacity (providers rate limited, out of quota,
+ * temporarily unavailable) wait with backoff and resume. Failures, QA outcomes and approvals are never retried blindly:
+ * those need a person, so the loop returns them.
+ */
+export async function superviseAutonomous(run:()=>Promise<AutonomousResult>,options:SuperviseOptions={}):Promise<AutonomousResult>{
+ const sleep=options.sleep??(ms=>new Promise<void>(resolve=>setTimeout(resolve,ms))),now=options.now??Date.now,deadline=now()+(options.maxWaitMs??6*3600_000);
+ let pause=options.minPauseMs??30_000,pass=0;
+ for(;;){
+  const result=await run();pass++;options.onPass?.(result,pass);
+  const waitingForCapacity=result.summary&&result.summary.paused.length>0&&result.summary.failed.length===0&&result.summary.approvalRequired.length===0;
+  if(!waitingForCapacity||result.stopped||now()+pause>deadline)return result;
+  await sleep(pause);pause=Math.min(pause*2,options.maxPauseMs??600_000);
+ }
+}

@@ -32,7 +32,7 @@ npm run benchmark                                            # deterministic ben
 
 Research, requirements, architecture (with an architecture review gate), decomposition, implementation, independent review, revision, QA, deterministic gates and repo integration are the plan's tasks and run inside EXECUTE. Each phase is persisted; the plan is persisted at PLAN time. Re-running the same command resumes after a crash at any point without repeating successful work. A changed brief is refused unless `--replan` is given.
 
-Flags: `--dry-run`, `--runtime <file>`, `--state-dir <dir>` (default `.companyswai`), `--wait-approval[=seconds]`, `--replan`, `--max-parallel N`.
+Flags: `--dry-run`, `--runtime <file>`, `--state-dir <dir>` (default `.companyswai`), `--wait-approval[=seconds]`, `--replan`, `--max-parallel N`, `--supervise[=minutes]` (unattended: while the run is only parked for provider capacity, wait with exponential backoff and resume; failures, QA outcomes and approvals are returned to a person, never retried blindly).
 Exit codes: `0` accepted (`ACCEPTED` or `ACCEPTED_WITH_RISKS`), `1` failed (`FAILED`, `FAILED_QA`, `BLOCKED`, `INCOMPLETE`), `2` parked (capacity, approval or blocked work — fix and rerun), `3` brief changed (use `--replan`).
 
 Briefs choose a **quality mode** (`FAST`, `BALANCED`, default, `MAX_QUALITY`), `signals` (tags such as `android`, `postgres`, `brownfield` that activate skills/gates), `research` (see below) and optionally a code workspace. `examples/project-brief.json` and `benchmarks/commerce-brief.json` are complete examples.

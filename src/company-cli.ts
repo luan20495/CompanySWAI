@@ -1,6 +1,6 @@
 import "dotenv/config";
 import {readFile} from "node:fs/promises";
-import {runAutonomous,PlanChangedError} from "./autonomous.js";
+import {runAutonomous,superviseAutonomous,PlanChangedError} from "./autonomous.js";
 import {loadRuntime} from "./runtime.js";
 import {MarkdownAgentRegistry} from "./md-agent-loader.js";
 import {SkillCatalog} from "./skill-selector.js";
@@ -8,7 +8,7 @@ import {dryRunSelector} from "./providers/dry-run.js";
 import {CompanyState} from "./state.js";
 import {ProjectPlan} from "./project.js";
 
-const USAGE="Usage: npm run company -- <project-brief.json|project-plan.json> [--dry-run] [--runtime config/providers.json] [--state-dir .companyswai] [--wait-approval[=seconds]] [--replan] [--max-parallel N]";
+const USAGE="Usage: npm run company -- <project-brief.json|project-plan.json> [--dry-run] [--runtime config/providers.json] [--state-dir .companyswai] [--wait-approval[=seconds]] [--replan] [--max-parallel N] [--supervise[=minutes]]";
 const args=process.argv.slice(2);
 const valueFlags=["--runtime","--state-dir","--max-parallel"];
 const flagValue=(name:string)=>{const i=args.indexOf(name);return i>=0?args[i+1]:undefined;};
@@ -18,6 +18,8 @@ const dryRun=args.includes("--dry-run"),runtimePath=flagValue("--runtime")??"con
 const waitArg=args.find(a=>a==="--wait-approval"||a.startsWith("--wait-approval="));
 const waitSeconds=waitArg?.includes("=")?Number(waitArg.split("=")[1]):3600;
 if(waitArg&&!(waitSeconds>0))throw new Error("--wait-approval needs a positive number of seconds");
+const superviseArg=args.find(a=>a==="--supervise"||a.startsWith("--supervise=")),superviseMinutes=superviseArg?.includes("=")?Number(superviseArg.split("=")[1]):360;
+if(superviseArg&&!(superviseMinutes>0))throw new Error("--supervise needs a positive number of minutes");
 const maxParallel=flagValue("--max-parallel")?Number(flagValue("--max-parallel")):undefined;
 if(maxParallel!=null&&!(Number.isInteger(maxParallel)&&maxParallel>0))throw new Error("--max-parallel needs a positive integer");
 
@@ -29,10 +31,12 @@ const knownRoles=(await new MarkdownAgentRegistry().loadAll()).map(agent=>agent.
 
 try{
  // brief -> plan -> estimate -> approval -> execute (research..QA, review, gates, integration) -> final status -> retrospective; resumes from any crash.
- const result=await runAutonomous(isPlan?{plan:ProjectPlan.parse(raw)}:{brief:raw},{
+ const once=()=>runAutonomous(isPlan?{plan:ProjectPlan.parse(raw)}:{brief:raw},{
   state,selector,dryRun,replan:args.includes("--replan"),knownRoles,knownSkills,
   approvalWait:waitArg?{pollMs:2000,timeoutMs:waitSeconds*1000}:undefined,orchestrator:maxParallel?{maxParallelTasks:maxParallel}:undefined
  });
+ // --supervise: while the run is only parked for provider capacity, wait with backoff and resume (unattended operation).
+ const result=superviseArg?await superviseAutonomous(once,{maxWaitMs:superviseMinutes*60_000,onPass:(r,pass)=>console.error("pass "+pass+": "+(r.final?.status??r.phase))}):await once();
  const {plan:_plan,...printable}=result;
  console.log(JSON.stringify({...printable,tasks:result.plan.tasks.length,mode:result.plan.mode,retrospective:await state.retrospectives.load(result.projectId)},null,2));
  // Exit codes: 0 accepted, 1 failed (task, QA or run), 2 parked (capacity, approval, blocked work) and resumable.
