@@ -44,11 +44,11 @@ export function assertBudget(policy:BudgetPolicy,records:ExecutionRecordValue[],
  if(!approved&&policy.approvalThreshold!=null&&estimatedCost>policy.approvalThreshold)throw new ApprovalRequiredError(estimatedCost);
 }
 
-export type BudgetLine={limit?:number;estimated:number;actual:number;runs:number;utilization?:number};
+export type BudgetLine={limit?:number;estimated:number;actual:number;runs:number;/** runs on subscription-billed profiles: counted in runs, absent from the money totals */subscriptionRuns:number;utilization?:number};
 export type BudgetReport={project:BudgetLine;departments:Record<string,BudgetLine>;tasks:Record<string,BudgetLine>;agents:Record<string,BudgetLine>};
 const line=(rows:ExecutionRecordValue[],limit?:number):BudgetLine=>{
  const estimated=rows.reduce((t,r)=>t+(r.estimatedCost??0),0),actual=sum(rows);
- return {limit,estimated,actual,runs:rows.length,...(limit?{utilization:actual/limit}:{})};
+ return {limit,estimated,actual,runs:rows.length,subscriptionRuns:rows.filter(r=>r.billing==="subscription").length,...(limit?{utilization:actual/limit}:{})};
 };
 const group=(rows:ExecutionRecordValue[],by:(r:ExecutionRecordValue)=>string,limits:Record<string,number>={})=>{
  const out:Record<string,BudgetLine>={},keys=[...new Set(rows.map(by))].sort();

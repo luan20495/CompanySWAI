@@ -3,11 +3,13 @@ export type CapacityProfile={
  id?:string;provider:string;model:string;state:ProviderState;capabilities:string[];contextWindow:number;
  inputCostPerMillion?:number;outputCostPerMillion?:number;creditRemaining?:number;tokenQuotaRemaining?:number;
  resetAt?:string;maxConcurrency:number;estimatedTokensPerSecond?:number;
+ /** "subscription" profiles (e.g. Claude Code) have no per-token price: cost is not applicable, never $0. */
+ billing?:"metered"|"subscription";
 };
 export type TaskDemand={capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number};
 
 export function estimateCost(p:CapacityProfile,d:TaskDemand){
- if(p.inputCostPerMillion==null||p.outputCostPerMillion==null)return undefined;
+ if(p.billing==="subscription"||p.inputCostPerMillion==null||p.outputCostPerMillion==null)return undefined;
  return d.estimatedInputTokens/1e6*p.inputCostPerMillion+d.estimatedOutputTokens/1e6*p.outputCostPerMillion;
 }
 /** A throttled/unavailable profile becomes usable again once its resetAt has passed. */

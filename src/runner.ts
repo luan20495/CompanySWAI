@@ -9,7 +9,7 @@ import {redact,redactError} from "./secrets.js";
 export type RunTask={
  projectId:string;taskId:string;agentRole:string;department?:string;kind:"maker"|"review";produces?:string[];
  inputRefs:string[];system:string;prompt:string;maxTokens:number;contract?:ContractRequirement;
- estimatedCost?:number;inputCostPerMillion?:number;outputCostPerMillion?:number;
+ estimatedCost?:number;inputCostPerMillion?:number;outputCostPerMillion?:number;billing?:"metered"|"subscription";
  workspace?:{path:string;checks:CheckCommandSpec[];autoCommit:boolean};
  handoffTo?:Array<{taskId:string;role:string}>;
 };
@@ -32,7 +32,7 @@ export class TaskRunner{
  constructor(private state:CompanyState){}
 
  private base(task:RunTask,id:string,startedAt:string,provider:{name:string;model:string}){
-  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost};
+  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost,billing:task.billing??"metered"};
  }
 
  async run(task:RunTask,provider:ModelProvider){
@@ -45,14 +45,14 @@ export class TaskRunner{
   await this.state.executions.append({...base,status:"STARTED"});
   try{
    let response=await provider.generate({system:task.system,prompt:task.prompt,maxTokens:task.maxTokens});
-   let inputTokens=response.inputTokens,outputTokens=response.outputTokens;
+   let inputTokens=response.inputTokens,outputTokens=response.outputTokens,answeredBy=response.model;
    const requirement=task.contract??{sections:[],verdict:false};
    let problems=contractViolations(response.text,requirement);
    if(problems.length){
     // One repair round: the model sees exactly what the contract found wrong.
     const repair=task.prompt+"\n\n--- CONTRACT VIOLATION ---\nYour previous response did not satisfy the output contract: "+problems.join("; ")+".\nRe-emit the complete response now, with every required section.\n\n--- PREVIOUS RESPONSE ---\n"+response.text.slice(0,REPAIR_ECHO_CHARS);
     response=await provider.generate({system:task.system,prompt:repair,maxTokens:task.maxTokens});
-    inputTokens+=response.inputTokens;outputTokens+=response.outputTokens;
+    inputTokens+=response.inputTokens;outputTokens+=response.outputTokens;answeredBy=response.model??answeredBy;
     problems=contractViolations(response.text,requirement);
     if(problems.length){
      const failedAt=new Date().toISOString(),error=new ContractViolationError(problems),actualCost=this.cost(task,inputTokens,outputTokens);
@@ -61,7 +61,7 @@ export class TaskRunner{
      throw error;
     }
    }
-   const record=await this.state.executions.append({...base,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,actualCost:this.cost(task,inputTokens,outputTokens)});
+   const record=await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,actualCost:this.cost(task,inputTokens,outputTokens)});
    return record;
   }catch(error){
    if(!(error instanceof ContractViolationError)){

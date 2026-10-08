@@ -25,7 +25,8 @@ export function classifyProviderError(error:unknown):ProviderFailure|undefined{
  if(error instanceof CapacityUnavailableError)return {state:"RATE_LIMITED",cooldown:"none"};
  const text=(error instanceof Error?error.message:String(error)).toLowerCase();
  if(/out.?of.?credit|insufficient.?credit|billing|payment required|\b402\b/.test(text))return {state:"OUT_OF_CREDIT",cooldown:"none"};
- if(/quota|\b429\b|rate.?limit|overloaded|capacity/.test(text))return {state:"RATE_LIMITED",cooldown:"rate"};
+ if(/quota|\b429\b|rate.?limit|usage limit|limit reached|overloaded|capacity/.test(text))return {state:"RATE_LIMITED",cooldown:"rate"};
+ if(/claude code is not logged in|claude code executable|was not found on path/.test(text))return {state:"UNAVAILABLE",cooldown:"none"};
  if(/\b50[0234]\b|timeout|timed out|econnreset|econnrefused|enotfound|fetch failed|network|socket hang up/.test(text))return {state:"UNAVAILABLE",cooldown:"unavailable"};
  return undefined;
 }

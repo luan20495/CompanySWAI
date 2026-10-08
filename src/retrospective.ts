@@ -62,7 +62,10 @@ export function buildRetrospective(projectId:string,records:ExecutionRecordValue
 }
 
 const money=(n:number)=>"$"+n.toFixed(4);
-const line=(name:string,l:BudgetReport["project"])=>"| "+name+" | "+(l.limit!=null?money(l.limit):"—")+" | "+money(l.estimated)+" | "+money(l.actual)+" | "+l.runs+" |";
+const line=(name:string,l:BudgetReport["project"])=>{
+ const subscription=l.runs>0&&l.subscriptionRuns===l.runs;
+ return "| "+name+" | "+(l.limit!=null?money(l.limit):"—")+" | "+(subscription?"subscription (no API price)":money(l.estimated))+" | "+(subscription?"subscription (no API price)":money(l.actual))+" | "+l.runs+(l.subscriptionRuns&&!subscription?" ("+l.subscriptionRuns+" subscription)":"")+" |";
+};
 /** RETROSPECTIVE.md: what happened, what it cost versus the estimate, and which lessons were proposed. */
 export function renderRetrospective(retro:RetrospectiveValue,summary:Pick<ProjectRunSummary,"completed"|"failed"|"paused"|"approvalRequired"|"waiting"|"skipped">,budget:BudgetReport){
  const table=(title:string,rows:Record<string,BudgetReport["project"]>)=>Object.keys(rows).length?["",title,"","| Name | Limit | Estimated | Actual | Runs |","|---|---|---|---|---|",...Object.entries(rows).map(([name,l])=>line(name,l))]:[];

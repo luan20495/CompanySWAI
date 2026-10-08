@@ -20,6 +20,8 @@ The execution log (`.companyswai/executions/<project>/records.jsonl`) is the sin
 A failing task (rejected patch, failed check, contract violation after repair, exhausted review rounds, budget) is isolated: it is recorded in `BLOCKERS.md`/`STATUS.md` and independent tasks still finish; its dependents wait.
 
 ## Budget
+Subscription-billed profiles (`claude-code`) have no per-token price: they are excluded from money limits and approvals, shown as subscription in estimates, execution records and `RETROSPECTIVE.md`.
+
 Limits exist per project, department, task (reviews count toward the task they review) and agent. Cost estimates reserve budget while a call is in flight, so parallel tasks cannot jointly overspend. A profile without prices fails closed when limits are configured. Above `approvalThreshold` a task needs a persisted approval. `RETROSPECTIVE.md` and the run summary compare estimate with actual at every level.
 
 ## Repo workspace

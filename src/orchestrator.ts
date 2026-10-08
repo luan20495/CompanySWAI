@@ -110,6 +110,8 @@ export class ProjectOrchestrator{
  /** Budget check and in-flight reservation are one serialized step, so parallel tasks cannot jointly overspend. */
  private admit(plan:ProjectPlanValue,task:RunTask,approvalKey:string,selection:ProviderSelection){
   return this.budgetGate.run(async():Promise<{reservation:InFlightCost}|{approval:ApprovalRequiredError}>=>{
+   // Subscription-billed profiles have no per-token price, so money limits and cost approvals do not apply to them.
+   if(selection.profile.billing==="subscription")return {reservation:{taskId:approvalKey,department:task.department??"general",agentRole:task.agentRole,estimatedCost:0}};
    const records=await this.state.executions.list(plan.projectId);
    const approved=selection.estimatedCost==null?false:await this.state.approvals.covers(plan.projectId,approvalKey,selection.estimatedCost);
    const context={taskId:approvalKey,department:task.department??"general",agentRole:task.agentRole};
@@ -144,7 +146,7 @@ export class ProjectOrchestrator{
     if(await this.waitForApproval(plan.projectId,approvalKey,needed))continue;
     return "APPROVAL_REQUIRED";
    }
-   const priced={...task,estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
+   const priced={...task,billing:selection.profile.billing??"metered",estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
    try{
     const result=await this.capacity.use(selection.profile.id??selection.profile.provider+"/"+selection.profile.model,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));
     this.selectProvider.reportSuccess?.(selection,{inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCost:result.actualCost});

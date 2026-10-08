@@ -75,7 +75,7 @@ test("runtime config supports multiple profiles, registry kinds and rejects bad 
  const base={model:"m",capabilities:["coding"],contextWindow:1000};
  await writeFile(path,JSON.stringify({providers:[{...base,id:"a",provider:"anthropic"},{...base,id:"b",provider:"openrouter",credentialEnv:"CSWAI_TEST_B"},{...base,id:"c",provider:"openai-compatible",baseUrl:"https://llm.test/v1",credentialEnv:"CSWAI_TEST_C"}]}));
  assert.deepEqual((await loadRuntimeConfig(path)).map(p=>p.id),["a","b","c"]);
- assert.deepEqual(createProviderRegistry().ids().sort(),["anthropic","openai-compatible","openrouter"]);
+ assert.deepEqual(createProviderRegistry().ids().sort(),["anthropic","claude-code","openai-compatible","openrouter"]);
  await writeFile(path,JSON.stringify({providers:[{...base,provider:"mystery",credentialEnv:"X_KEY"}]}));
  await assert.rejects(()=>loadRuntimeConfig(path),/Unknown provider kind/);
  await writeFile(path,JSON.stringify({providers:[{...base,id:"a",provider:"anthropic"},{...base,id:"a",provider:"anthropic"}]}));
