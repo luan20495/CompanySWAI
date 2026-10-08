@@ -86,7 +86,8 @@ export function parseRequirements(text:string):ParsedRequirements{
 // ---------------------------------------------------------------- QA traceability
 export const QA_STATUSES=["PASS","FAIL","BLOCKED","NOT_APPLICABLE"] as const;
 export type QaStatus=(typeof QA_STATUSES)[number];
-export type QaTest={requirementId:string;testId?:string;status:QaStatus;text:string;evidence?:string};
+/** `owner` names the upstream task whose work the finding is about (required on FAIL, so rework goes to the right maker). */
+export type QaTest={requirementId:string;testId?:string;status:QaStatus;text:string;evidence?:string;owner?:string};
 export type ParsedQa={overall?:QaStatus;overallText:string;tests:QaTest[];malformed:string[]};
 
 export function parseQa(text:string):ParsedQa{
@@ -102,7 +103,7 @@ export function parseQa(text:string):ParsedQa{
   const match=line.match(/^-\s*\[(REQ-\d+)\]\s*(?:->|→)\s*(?:\[(T-\d+)\]\s*)?(PASS|FAIL|BLOCKED|NOT_APPLICABLE)\s*:\s*(.*)$/i);
   if(!match){out.malformed.push(line);continue;}
   const parts=match[4].split("|").map(p=>p.trim());
-  out.tests.push({requirementId:match[1],testId:match[2],status:match[3].toUpperCase() as QaStatus,text:parts[0]??"",evidence:field(parts.slice(1),"evidence")});
+  out.tests.push({requirementId:match[1],testId:match[2],status:match[3].toUpperCase() as QaStatus,text:parts[0]??"",evidence:field(parts.slice(1),"evidence"),owner:field(parts.slice(1),"owner")});
  }
  return out;
 }

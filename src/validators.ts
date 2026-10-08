@@ -6,7 +6,7 @@ import {QA_STATUSES,detectConflicts,impliedQaStatus,parseArchitectureReview,pars
  * Deterministic output validators. Agents' RULES.md name the validators that apply to their answers; the runtime
  * enforces them (one repair round, then the attempt fails). A validator never calls a model.
  */
-export type ValidationContext={params:Record<string,unknown>;requirementIds?:string[];/** URLs the research connectors really retrieved for this task; external sources must be among them. */retrievedUrls?:string[];now?:number};
+export type ValidationContext={params:Record<string,unknown>;requirementIds?:string[];/** Upstream tasks QA may name as the owner of a failing finding. */ownerCandidates?:string[];/** URLs the research connectors really retrieved for this task; external sources must be among them. */retrievedUrls?:string[];now?:number};
 export type ValidatorResult={problems:string[];notes:string[]};
 type Validator=(text:string,ctx:ValidationContext)=>ValidatorResult;
 
@@ -88,6 +88,7 @@ const qaTraceability:Validator=(text,ctx)=>{
   if(test.testId){if(testIds.has(test.testId))problems.push("duplicate test id "+test.testId);testIds.add(test.testId);}
   else if(test.status!=="NOT_APPLICABLE")problems.push(test.requirementId+" "+test.status+" needs a test id ([T-001])");
   if((test.status==="PASS"||test.status==="FAIL")&&!test.evidence)problems.push((test.testId??test.requirementId)+" "+test.status+" needs '| evidence: …'");
+  if(test.status==="FAIL"&&ctx.ownerCandidates?.length&&!(test.owner&&ctx.ownerCandidates.includes(test.owner)))problems.push((test.testId??test.requirementId)+" FAIL needs '| owner: <task>' naming whose work must change, one of: "+ctx.ownerCandidates.join(", "));
  }
  if(known.size){for(const id of known)if(!covered.has(id))problems.push("requirement "+id+" has no test or NOT_APPLICABLE/BLOCKED classification");}
  else notes.push("no requirement IDs were available to check coverage");

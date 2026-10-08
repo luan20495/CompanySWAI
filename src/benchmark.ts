@@ -28,6 +28,7 @@ export type BenchmarkReport={
  /** `failed` counts failed gate attempts, including ones the task later repaired. */
  gates:{passed:number;failed:number;worktreeCommits:number};
  traceability:{requirements:number;tests:number;qa:string;citations:number;decisions:number};
+ qaRework:{rounds:number;requests:number};
  final:{status:string;risks:number};
  runtimeMs:number;usage:{inputTokens:number;outputTokens:number;knownCost:number;subscriptionRuns:number};
 };
@@ -67,7 +68,7 @@ export async function runBenchmark(options:BenchmarkOptions={}):Promise<Benchmar
  // Fault injection (dry-run only): a rate-limited first profile, one forced revision, and a crash of the QA step on its first attempt.
  let rateLimited=false,qaCrashed=false;const crashTask="qa-engineer";
  const provider=(name:string,limited:boolean):ModelProvider=>{
-  const inner=new DryRunProvider("deterministic",{requestChangesFor:["backend-engineer"]});
+  const inner=new DryRunProvider("deterministic",{requestChangesFor:["backend-engineer"],failQaFirst:true});
   return {name,model:name+"-model",async generate(request:ModelRequest){
    if(limited&&!rateLimited){rateLimited=true;throw new Error("429 rate limit exceeded (injected)");}
    if(request.meta?.taskId===crashTask&&request.meta.kind==="maker"&&!qaCrashed){qaCrashed=true;throw new Error("model process died (injected crash)");}
@@ -108,6 +109,7 @@ export async function runBenchmark(options:BenchmarkOptions={}):Promise<Benchmar
   retries:allEvents.filter(e=>e.type==="provider.failover"||e.type==="provider.retry").length,failovers:allEvents.filter(e=>e.type==="provider.failover").length,
   resume:{crashInjected:!live,correct:duplicates===0&&Boolean(final?.status.startsWith("ACCEPTED")),duplicateWork:duplicates,firstRunFailed:firstFailed,secondRunCompleted:second.summary?.completed.length??0},
   providers,gates:{passed:gatePass,failed:gateFail,worktreeCommits:commits},
+  qaRework:{rounds:await state.rework.rounds(brief.projectId as string),requests:(await state.rework.list(brief.projectId as string)).length},
   traceability:{requirements:trace.requirements.length,tests:trace.tests.length,qa:trace.qa?.overall??"NOT_RUN",citations:research?.sources.length??0,decisions:trace.decisions.length},
   final:{status:final?.status??"UNKNOWN",risks:final?.risks.length??0},
   runtimeMs:Date.now()-started,
@@ -124,6 +126,7 @@ export async function runBenchmark(options:BenchmarkOptions={}):Promise<Benchmar
  expect(report.gates.worktreeCommits>0,"coding tasks must integrate through isolated worktrees");
  if(!live){
   expect(report.reviews.revisions>=1,"the forced revision must have happened");
+  expect(report.qaRework.rounds>=1&&report.traceability.qa==="PASS","QA must fail first, route the finding to its owner, and pass after rework");
   expect(report.retries>=1,"the injected rate limit must have been retried");
   expect(firstFailed.includes(crashTask),"the injected crash must have failed the QA task on the first run");
   expect(report.resume.correct,"resume after the crash must complete without repeating work");

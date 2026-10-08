@@ -12,7 +12,7 @@ import type {ArchCategoryResult,ParsedResearch,QaTest,Requirement} from "./struc
  */
 const Ac=z.object({id:z.string(),text:z.string()});
 const RequirementRecord=z.object({id:z.string(),basis:z.string(),text:z.string(),evidence:z.array(z.string()),acceptance:z.array(Ac),taskId:z.string()});
-const TestRecord=z.object({id:z.string().optional(),requirementId:z.string(),status:z.enum(["PASS","FAIL","BLOCKED","NOT_APPLICABLE"]),text:z.string(),evidence:z.string().optional(),taskId:z.string()});
+const TestRecord=z.object({id:z.string().optional(),requirementId:z.string(),status:z.enum(["PASS","FAIL","BLOCKED","NOT_APPLICABLE"]),text:z.string(),evidence:z.string().optional(),owner:z.string().optional(),taskId:z.string()});
 const DecisionRecord=z.object({id:z.string(),taskId:z.string(),executionId:z.string(),text:z.string()});
 const ArtifactRecord=z.object({id:z.string(),taskId:z.string(),executionId:z.string(),kind:z.string(),ref:z.string()});
 const ArchitectureRecord=z.object({taskId:z.string(),verdict:z.string(),categories:z.array(z.object({category:z.string(),status:z.string(),note:z.string()})),unresolvedRisks:z.array(z.string())});
@@ -45,7 +45,7 @@ export class TraceabilityStore{
  }
  setTests(projectId:string,taskId:string,overall:QaTest["status"],tests:QaTest[]){
   return this.mutate(projectId,trace=>{
-   trace.tests=[...trace.tests.filter(t=>t.taskId!==taskId),...tests.map(t=>({id:t.testId,requirementId:t.requirementId,status:t.status,text:t.text,evidence:t.evidence,taskId}))];
+   trace.tests=[...trace.tests.filter(t=>t.taskId!==taskId),...tests.map(t=>({id:t.testId,requirementId:t.requirementId,status:t.status,text:t.text,evidence:t.evidence,owner:t.owner,taskId}))];
    trace.qa={taskId,overall,at:new Date().toISOString()};
   });
  }

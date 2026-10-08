@@ -40,7 +40,7 @@ const PolicyMeta=z.object({
  qaDepth:z.record(z.enum(["light","standard","deep"]),z.object({minTests:z.number().int().min(1),guidance:z.string().min(1)})),
  modes:z.record(QualityMode,z.object({
   reviewRisks:z.array(Risk),levelByRisk:z.partialRecord(Risk,ReviewLevel),routing:RoutingPolicy,
-  minQualityTier:z.number().int().min(1).max(5),requiredGates:z.array(z.string()),qa:z.enum(["light","standard","deep"])
+  minQualityTier:z.number().int().min(1).max(5),requiredGates:z.array(z.string()),qa:z.enum(["light","standard","deep"]),qaReworkRounds:z.number().int().min(0).max(5).default(2)
  }))
 });
 export type PolicyDefinition=z.infer<typeof PolicyMeta>;

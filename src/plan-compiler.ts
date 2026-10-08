@@ -39,7 +39,7 @@ export async function compileBriefToProjectPlan(input:ProjectBriefInput,learning
  const quality={routing:mode.routing,minQualityTier:mode.minQualityTier};
  const workspace=brief.workspacePath?{path:brief.workspacePath,checks:brief.checks,gates:brief.gates,setup:brief.setup,autoCommit:brief.autoCommit,isolation:brief.isolation}:undefined;
  return ProjectPlan.parse({
-  projectId:work.projectId,mode:brief.mode,budget:brief.budget,research:brief.research,signals:work.signals,...(workspace?{workspace}:{}),
+  projectId:work.projectId,mode:brief.mode,maxQAReworkRounds:mode.qaReworkRounds,budget:brief.budget,research:brief.research,signals:work.signals,...(workspace?{workspace}:{}),
   tasks:work.tasks.map(task=>({
    id:task.id,agentRole:task.agentRole,department:task.department,dependencies:task.dependencies,system:task.system+learningFor(task.agentRole,task.skills,work.signals,learning),prompt:task.objective,inputRefs:[],
    capabilities:task.capabilities,produces:task.produces,contract:task.contract,risk:task.risk,skills:task.skills,requiredGates:task.requiredGates,deliversCode:task.deliversCode,priority:critical(task.id),

@@ -20,6 +20,9 @@ The execution log (`.companyswai/executions/<project>/records.jsonl`) is the sin
 
 Torn log lines and corrupt checkpoints are quarantined; JSON state is written atomically. A failing task is isolated: it is recorded in `BLOCKERS.md`/`STATUS.md`, independent tasks still finish and dependents wait.
 
+## QA fail -> rework -> re-verify
+When QA reports `FAIL`, each failing finding goes to the task named in its `| owner:` (a FAIL must name one of QA's upstream tasks) — never to every agent. The owner gets only its own findings (requirement text, acceptance criteria, evidence), its current artifact and its normal upstream context; the result passes the same gates and independent review again (with a fresh round budget), then QA verifies from scratch. At most `maxQAReworkRounds` rounds (`qaReworkRounds` per quality mode in `company/POLICY.md`, overridable). `BLOCKED` and `NOT_APPLICABLE` never trigger rework, unrelated accepted work is never rerun, and the round is persisted before it starts (`.companyswai/rework/`), so a crash resumes inside the same round without starting another.
+
 ## Review levels and quality modes
 `company/POLICY.md` maps risk to a review level per mode. NORMAL: one reviewer. CRITICAL: two independent reviewers; both must PASS. HIGH_RISK: two reviewers (second with the security lens where applicable), passing deterministic gates, and a passing QA gate at project level. FAST reviews only high/critical work with the cheapest eligible provider; BALANCED reviews everything and double-reviews critical work; MAX_QUALITY routes quality-first and escalates review levels.
 

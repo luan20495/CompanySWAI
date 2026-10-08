@@ -95,6 +95,8 @@ export const ResearchSettings=z.object({
 export const ProjectPlan=z.object({
  projectId:SafeId,
  mode:QualityMode.default("BALANCED"),
+ /** How many times QA FAIL findings may be routed back to their owners for rework (then QA re-verifies). */
+ maxQAReworkRounds:z.number().int().min(0).max(5).default(2),
  budget:BudgetPolicySchema,
  workspace:WorkspaceSchema.optional(),
  research:ResearchSettings.default({enabled:false,maxSourceAgeDays:730,connectors:[]}),

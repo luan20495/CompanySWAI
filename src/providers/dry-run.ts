@@ -10,6 +10,8 @@ import {REVIEW_REQUEST_PREFIX} from "../output-parser.js";
 export type DryRunOptions={
  /** Task IDs whose first review answers CHANGES_REQUIRED, so the revision loop is exercised. */
  requestChangesFor?:Iterable<string>;
+ /** The first QA verification reports a FAIL (owned by an upstream task), so the QA rework loop is exercised; the re-verification after rework passes. */
+ failQaFirst?:boolean;
  /** Added to every response so tests can tell outputs apart. */
  latencyMs?:number;
 };
@@ -17,6 +19,8 @@ const today=()=>new Date().toISOString().slice(0,10);
 const reviewedTask=(taskId:string)=>taskId.replace(/--review-\d+(?:-\d+)?$/,"");
 const reviewVersion=(taskId:string)=>Number(taskId.match(/--review-(\d+)/)?.[1]??1);
 
+let failQaNext=false;
+const qaFails=(request:ModelRequest)=>failQaNext&&!request.prompt.includes("RE-VERIFICATION");
 function sectionBody(title:string,request:ModelRequest):string{
  const meta=request.meta,params=meta?.params??{},external=params.externalResearch===true;
  const subject=request.prompt.split("\n").find(l=>l.trim()&&!l.startsWith("---"))?.slice(0,100)??"the task";
@@ -30,11 +34,12 @@ function sectionBody(title:string,request:ModelRequest):string{
   case "Claims":return "- [C1] FACT [topic: scope]: The brief asks for the described product. | cites: S1\n- [C2] ASSUMPTION: Standard industry practices apply.\n- [C3] INFERENCE: The scope is feasible with a standard stack. | from: C1,C2\n- [C4] RECOMMENDATION: Start with the thinnest end-to-end slice. | based-on: C1,C3";
   case "Conflicts":return "None.";
   case "Requirements":return "- [REQ-001] FACT: The product delivers the described core capability. (basis: brief)\n  - [AC-001.1] Given the core flow, when a user completes it, then the expected result is produced.\n- [REQ-002] ASSUMPTION: Reasonable defaults apply to unspecified behaviour.\n  - [AC-002.1] Given an unspecified case, when it occurs, then the documented default applies.\n- [REQ-003] RECOMMENDATION: Failures are visible to operators.\n  - [AC-003.1] Given a failure, when it occurs, then it is logged with context.";
-  case "QA Status":return "PASS — every requirement has a passing dry-run check.";
+  case "QA Status":return qaFails(request)?"FAIL — one requirement deviates in the dry-run fixture.":"PASS — every requirement has a passing dry-run check.";
   case "Traceability":{
    const ids=meta?.requirementIds?.length?meta.requirementIds:["REQ-001","REQ-002","REQ-003"];
    const per=Number(params.minTestsPerRequirement??1);let n=0;
-   return ids.flatMap(id=>Array.from({length:per},(_,k)=>"- ["+id+"] -> [T-"+String(++n).padStart(3,"0")+"] PASS: dry-run check "+(k+1)+" for "+id+" | evidence: deterministic fixture")).join("\n");
+   const owner=meta?.ownerCandidates?.at(-1);
+   return ids.flatMap((id,index)=>Array.from({length:per},(_,k)=>"- ["+id+"] -> [T-"+String(++n).padStart(3,"0")+"] "+(qaFails(request)&&index===0&&k===0?"FAIL: dry-run deviation for "+id+" | evidence: deterministic fixture"+(owner?" | owner: "+owner:""):"PASS: dry-run check "+(k+1)+" for "+id+" | evidence: deterministic fixture"))).join("\n");
   }
   case "Architecture Review":return ((params.architectureCategories as string[]|undefined)??[]).map(c=>"- "+c+": PASS — adequate for the dry-run project").join("\n")||"- modularity: PASS — adequate";
   case "Unresolved Risks":return "None.";
@@ -47,6 +52,7 @@ export class DryRunProvider implements ModelProvider{
  private changed=new Set<string>();
  constructor(readonly model="deterministic",private options:DryRunOptions={}){this.changed=new Set(options.requestChangesFor??[]);}
  async generate(request:ModelRequest):Promise<ModelResponse>{
+  failQaNext=Boolean(this.options.failQaFirst);
   const meta=request.meta,isReviewer=meta?meta.kind==="review":request.prompt.startsWith(REVIEW_REQUEST_PREFIX);
   const sections=meta?.sections?.length?meta.sections:["Deliverables","Decisions","Evidence","Blockers","Handoff"];
   let verdict="PASS";

@@ -11,7 +11,7 @@ test("the deterministic benchmark project passes every invariant and reports its
  assert.deepEqual(report.resume.firstRunFailed,["qa-engineer"]);assert.equal(report.resume.correct,true);assert.equal(report.resume.duplicateWork,0);
  assert.ok(Object.keys(report.providers).length>=2);
  assert.ok(report.gates.passed>0&&report.gates.failed===0&&report.gates.worktreeCommits>0);
- assert.equal(report.traceability.qa,"PASS");assert.ok(report.traceability.requirements>0&&report.traceability.citations>0&&report.traceability.decisions>0);
+ assert.equal(report.traceability.qa,"PASS");assert.ok(report.qaRework.rounds>=1&&report.qaRework.requests>=2,"the QA fail -> owner rework -> re-verify loop ran");assert.ok(report.traceability.requirements>0&&report.traceability.citations>0&&report.traceability.decisions>0);
  assert.ok(report.final.status.startsWith("ACCEPTED"));assert.ok(report.runtimeMs>0&&report.usage.inputTokens>0&&report.usage.knownCost>0);
 });
 

@@ -15,11 +15,12 @@ import {join} from "node:path";
 import {redactError} from "./secrets.js";
 import {RunMetrics,type MetricsSnapshot,type TaskOutcome} from "./metrics.js";
 import type {ExecutionRecordValue} from "./execution-record.js";
+import type {ReworkRequest} from "./rework-store.js";
 import {defaultConnectorRegistry,gatherResearch,renderRetrieved,type ConnectorRegistry,type ResearchDocument} from "./research-connectors.js";
 
 export type ProjectRunSummary={
  projectId:string;runId:string;completed:string[];paused:string[];approvalRequired:string[];failed:string[];waiting:string[];skipped:string[];
- waves:number;reviewRuns:number;revisions:number;disagreements:number;failovers:number;budget:BudgetReport;metrics:MetricsSnapshot;
+ waves:number;reviewRuns:number;revisions:number;disagreements:number;failovers:number;qaReworkRounds:number;budget:BudgetReport;metrics:MetricsSnapshot;
 };
 export type OrchestratorOptions={
  /** When set, a task that needs approval waits (polling the persisted approval) instead of ending the run. */
@@ -40,6 +41,8 @@ export type OrchestratorOptions={
  now?:()=>number;
  /** Extra model attempts after an isolated task conflicted with already-integrated work. */
  maxConflictRetries?:number;
+ /** Overrides the plan's limit on QA FAIL -> owner rework -> QA re-verification rounds. */
+ maxQAReworkRounds?:number;
  /** Extra model attempts after generated code failed its deterministic gates (the failure output is fed back). */
  maxGateRepairs?:number;
  /** Research connector kinds available to plans (default: static corpus and http-json). */
@@ -121,11 +124,16 @@ export class ProjectOrchestrator{
  private reviewTaskId(task:TaskPlanValue,version:number,slot:number){return task.id+"--review-"+version+"-"+slot;}
 
  /** Derives a task's position from the persisted execution log alone; this is what makes resume deterministic. */
- private history(records:ExecutionRecordValue[],task:TaskPlanValue,plan:ProjectPlanValue){
+ private history(records:ExecutionRecordValue[],task:TaskPlanValue,plan:ProjectPlanValue,rework:ReworkRequest[]=[]){
   const indexed=records.map((record,index)=>({record,index}));
   const makers=indexed.filter(x=>x.record.taskId===task.id&&x.record.status==="SUCCEEDED"),maker=makers.at(-1);
   const reviews=indexed.filter(x=>x.record.taskId.startsWith(task.id+"--review-")&&x.record.status==="SUCCEEDED");
   const since=reviews.filter(x=>maker&&x.index>maker.index).map(x=>x.record);
+  // QA rework: a request is pending until the task has a maker success newer than the version it had when asked.
+  const requests=rework.filter(r=>r.taskId===task.id),latest=requests.at(-1),pendingRequest=latest&&makers.length===latest.afterVersion?latest:undefined;
+  // Review rounds are budgeted per epoch: reviews of versions before the last rework do not count against the reworked version.
+  const satisfied=requests.filter(r=>makers.length>r.afterVersion).at(-1),epochStart=satisfied?makers[satisfied.afterVersion].index:0;
+  const epochReviews=reviews.filter(x=>x.index>=epochStart);
   const slots=this.slotCount(task),verdictBySlot=new Map<number,"PASS"|"CHANGES_REQUIRED">();
   for(const r of since)verdictBySlot.set(r.slot??0,parseReviewVerdict(r.output)??"CHANGES_REQUIRED");
   const reviewed=slots>0&&[...Array(slots).keys()].every(k=>verdictBySlot.has(k));
@@ -133,10 +141,10 @@ export class ProjectOrchestrator{
   const checksGate=Boolean(task.review?.gates.includes("checks")&&plan.workspace&&task.requiredGates.length);
   const gatesOk=!checksGate||Boolean(maker&&(maker.record.evidence.length>0||maker.record.gates.some(g=>g.status==="PASS")));
   return {
-   maker:maker?.record,makerVersions:makers.length,reviewsTotal:reviews.length,since,
+   maker:maker?.record,makerVersions:makers.length,reviewsTotal:epochReviews.length,since,pendingRequest,
    missingSlots:[...Array(slots).keys()].filter(k=>!verdictBySlot.has(k)),
    disagreement:verdicts.includes("PASS")&&anyChanges,
-   complete:Boolean(maker&&(!task.review||(allPass&&gatesOk))),
+   complete:Boolean(maker&&!pendingRequest&&(!task.review||(allPass&&gatesOk))),
    needsRevision:Boolean(task.review&&maker&&reviewed&&anyChanges),
    gatesFailed:Boolean(maker&&task.review&&allPass&&!gatesOk)
   };
@@ -160,7 +168,7 @@ export class ProjectOrchestrator{
  }
  private refs(manifest:ContextEntry[]){return manifest.map(e=>e.ref+"["+e.sections.join(",")+"]");}
  private async validationContext(plan:ProjectPlanValue,contract:{validators?:string[]}){
-  return contract.validators?.includes("qa-traceability")?{requirementIds:await this.state.traceability.requirementIds(plan.projectId)}:undefined;
+  return contract.validators?.includes("qa-traceability")?{requirementIds:await this.state.traceability.requirementIds(plan.projectId),ownerCandidates:plan.tasks.find(t=>t.contract===contract)?.dependencies}:undefined;
  }
  /** Documents retrieved once per project run for research tasks; absent when research is off or no connector is configured. */
  private retrieved(plan:ProjectPlanValue,task:TaskPlanValue){
@@ -308,10 +316,63 @@ export class ProjectOrchestrator{
   }
  }
 
+ /**
+  * One QA-driven rework step. `fix`: the owner gets only QA's findings for its work, its own current artifact, its normal
+  * upstream context and the relevant requirement text — nothing about other agents. `reverify`: QA starts a fresh verification
+  * against the changed work. Gates and independent review then run exactly as for any maker output.
+  */
+ private async reworkRun(plan:ProjectPlanValue,task:TaskPlanValue,request:ReworkRequest,previous:ExecutionRecordValue,records:ExecutionRecordValue[],counters:Counters){
+  const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
+  const header="--- QA "+(request.kind==="fix"?"FINDINGS (rework round ":"RE-VERIFICATION (rework round ")+request.round+") ---\n"+request.findings.join("\n");
+  const prompt=request.kind==="fix"
+   ?built.prompt+"\n\n"+header+"\n\n--- YOUR CURRENT ARTIFACT ---\n"+previous.output+"\n\nFix what these findings require and keep everything else unchanged. Re-emit the complete artifact (every section; for code, every changed file in full)."
+   :built.prompt+"\n\n"+header+"\n\nThe work above was reworked after your earlier verification. Verify again from scratch against the current artifacts and the runtime test evidence; do not assume earlier results still hold.";
+  this.emit(plan.projectId,"qa.rework.run",{taskId:task.id,detail:request.kind+" round "+request.round});
+  await this.state.memory.recordStatus(plan.projectId,task.id,"QA_REWORK",request.kind+" round "+request.round+": "+request.failedTests.join(", "));
+  if(request.kind==="fix")counters.revisions++;
+  return this.executeMaker(plan,task,prompt,built.manifest,[...task.inputRefs,"rework:"+request.id],counters);
+ }
+
+ /**
+  * After a scheduling round: if QA reported FAIL and rounds remain, route each failing finding to the task that owns it
+  * (and ask QA to verify again). BLOCKED and NOT_APPLICABLE findings never trigger rework; unrelated accepted work is untouched.
+  */
+ private async startQAReworkRound(plan:ProjectPlanValue):Promise<boolean>{
+  const limit=this.options.maxQAReworkRounds??plan.maxQAReworkRounds;
+  const qaTask=plan.tasks.find(t=>t.contract.validators.includes("qa-traceability"));
+  if(!qaTask||limit<=0)return false;
+  const trace=await this.state.traceability.load(plan.projectId);
+  if(trace.qa?.overall!=="FAIL"||trace.qa.taskId!==qaTask.id)return false;
+  const rounds=await this.state.rework.rounds(plan.projectId);
+  if(rounds>=limit){this.emit(plan.projectId,"qa.rework.exhausted",{detail:rounds+" round(s) used"});await this.state.memory.recordStatus(plan.projectId,qaTask.id,"QA_REWORK_EXHAUSTED","QA still reports FAIL after "+rounds+" rework round(s)");return false;}
+  const failed=trace.tests.filter(t=>t.taskId===qaTask.id&&t.status==="FAIL");
+  if(!failed.length)return false;
+  const dependencyIds=new Set(qaTask.dependencies),fallbackOwners=plan.tasks.filter(t=>dependencyIds.has(t.id)&&t.deliversCode).map(t=>t.id);
+  const byOwner=new Map<string,typeof failed>();
+  for(const test of failed){
+   const owners=test.owner&&dependencyIds.has(test.owner)?[test.owner]:(fallbackOwners.length?fallbackOwners:[...dependencyIds]);
+   for(const owner of owners)byOwner.set(owner,[...(byOwner.get(owner)??[]),test]);
+  }
+  const records=await this.state.executions.list(plan.projectId),versions=(id:string)=>records.filter(r=>r.taskId===id&&r.status==="SUCCEEDED").length;
+  const requirement=(id:string)=>trace.requirements.find(r=>r.id===id);
+  const describe=(test:(typeof failed)[number])=>{const req=requirement(test.requirementId);return "["+test.requirementId+"] -> ["+(test.id??"?")+"] FAIL: "+test.text+(test.evidence?" | evidence: "+test.evidence:"")+(req?"\n  requirement: "+req.text+req.acceptance.map(a=>"\n  ["+a.id+"] "+a.text).join(""):"");};
+  const requests:Array<{taskId:string;kind:"fix"|"reverify";afterVersion:number;findings:string[];failedTests:string[]}>=[...byOwner.entries()].map(([taskId,tests])=>({taskId,kind:"fix" as const,afterVersion:versions(taskId),findings:tests.map(describe),failedTests:tests.map(t=>t.id??t.requirementId)}));
+  requests.push({taskId:qaTask.id,kind:"reverify",afterVersion:versions(qaTask.id),findings:["Previously failing: "+failed.map(t=>t.requirementId+(t.id?" ("+t.id+")":"")).join(", "),"Reworked tasks: "+[...byOwner.keys()].join(", ")],failedTests:failed.map(t=>t.id??t.requirementId)});
+  const {round}=await this.state.rework.addRound(plan.projectId,requests);
+  this.emit(plan.projectId,"qa.rework",{detail:"round "+round+" for "+[...byOwner.keys()].join(", ")});
+  await this.state.memory.recordStatus(plan.projectId,qaTask.id,"QA_FAIL_REWORK","round "+round+": "+failed.map(t=>t.requirementId).join(", ")+" -> "+[...byOwner.keys()].join(", "));
+  return true;
+ }
+
  /** Advances one task from whatever state the log says it is in until it is done, parked or failed. */
  private async advance(plan:ProjectPlanValue,task:TaskPlanValue,counters:Counters):Promise<"DONE"|Pause>{
   for(;;){
-   const records=await this.state.executions.list(plan.projectId),state=this.history(records,task,plan);
+   const records=await this.state.executions.list(plan.projectId),rework=await this.state.rework.list(plan.projectId),state=this.history(records,task,plan,rework);
+   if(state.pendingRequest&&state.maker){
+    const result=await this.reworkRun(plan,task,state.pendingRequest,state.maker,records,counters);
+    if(typeof result==="string")return result;
+    continue;
+   }
    if(state.complete)return "DONE";
    if(!state.maker){
     const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
@@ -367,60 +428,75 @@ export class ProjectOrchestrator{
   if(plan.workspace?.isolation==="worktree")await new WorktreeManager(plan.workspace.path,join(this.state.root,"worktrees")).cleanupStale(new Set(),15*60*1000);
   this.runId=randomUUID();this.metrics=new RunMetrics(this.options.now);
   this.emit(plan.projectId,"run.started",{detail:plan.mode});
-  const states=new Map<string,string>(),completed=new Set<string>(),paused=new Set<string>(),approvalRequired=new Set<string>(),failed=new Set<string>(),skipped=new Set<string>();
-  const pending=new Map(plan.tasks.map(t=>[t.id,t])),counters:Counters={reviewRuns:0,revisions:0,disagreements:0,failovers:0};
-  const initialRecords=await this.state.executions.list(plan.projectId);
-  for(const task of plan.tasks)if(this.history(initialRecords,task,plan).complete){
-   completed.add(task.id);pending.delete(task.id);skipped.add(task.id);states.set(task.id,"DONE");
-   await this.state.memory.recordStatus(plan.projectId,task.id,"SKIPPED_ALREADY_COMPLETE");
-  }
+  const states=new Map<string,string>(),skipped=new Set<string>(),counters:Counters={reviewRuns:0,revisions:0,disagreements:0,failovers:0};
+  let completed=new Set<string>(),paused=new Set<string>(),approvalRequired=new Set<string>(),failed=new Set<string>(),pending=new Map<string,TaskPlanValue>(),waves=0,firstRound=true;
   const planWrite=new Mutex(),syncPlan=()=>planWrite.run(()=>this.state.memory.syncPlan(plan,states));
-  await syncPlan();
-  const readyAt=new Map<string,number>(),running=new Map<string,Promise<void>>(),levels=new Map<string,number>();
-  const maxParallel=Math.max(1,this.options.maxParallelTasks??DEFAULT_PARALLEL),agingMs=this.options.agingMs??DEFAULT_AGING_MS;
+  const levels=new Map<string,number>();
   const level=(task:TaskPlanValue):number=>{
    const known=levels.get(task.id);if(known!=null)return known;
    const value=1+Math.max(0,...task.dependencies.map(dep=>level(plan.tasks.find(t=>t.id===dep)!)));levels.set(task.id,value);return value;
   };
-  let waves=0;
-  const execute=async(task:TaskPlanValue)=>{
-   this.metrics.taskStarted(task.id);this.emit(plan.projectId,"task.started",{taskId:task.id});
-   let outcome:TaskOutcome;
-   try{
-    const result=await this.advance(plan,task,counters);
-    if(result==="DONE"){
-     outcome="DONE";completed.add(task.id);states.set(task.id,"DONE");waves=Math.max(waves,level(task));
-     await this.state.memory.recordStatus(plan.projectId,task.id,"DONE");
-     const checkpoint=await this.state.checkpoints.load(plan.projectId,task.id);
-     if(checkpoint)await this.state.checkpoints.save(plan.projectId,{...checkpoint,at:new Date().toISOString(),status:"DONE",remaining:[]});
-    }else if(result==="PAUSED"){outcome="PAUSED";paused.add(task.id);states.set(task.id,"PAUSED_CAPACITY");}
-    else{outcome="APPROVAL_REQUIRED";approvalRequired.add(task.id);states.set(task.id,"APPROVAL_REQUIRED");}
-   }catch(error){outcome="FAILED";failed.add(task.id);states.set(task.id,"BLOCKED");await this.fail(plan,task,error);}
-   this.metrics.taskFinished(task.id,outcome);this.emit(plan.projectId,"task.finished",{taskId:task.id,detail:outcome});
+  const maxParallel=Math.max(1,this.options.maxParallelTasks??DEFAULT_PARALLEL),agingMs=this.options.agingMs??DEFAULT_AGING_MS;
+  /** One scheduling round over everything that is not complete (including tasks with pending QA rework). */
+  const round=async()=>{
+   completed=new Set();paused=new Set();approvalRequired=new Set();failed=new Set();pending=new Map();
+   const initialRecords=await this.state.executions.list(plan.projectId),requests=await this.state.rework.list(plan.projectId);
+   for(const task of plan.tasks){
+    if(this.history(initialRecords,task,plan,requests).complete){
+     completed.add(task.id);states.set(task.id,"DONE");
+     if(firstRound){skipped.add(task.id);await this.state.memory.recordStatus(plan.projectId,task.id,"SKIPPED_ALREADY_COMPLETE");}
+    }else pending.set(task.id,task);
+   }
+   firstRound=false;
    await syncPlan();
-  };
-  // Event-driven DAG scheduler: a task starts the moment its dependencies are done and a project slot is free.
-  await new Promise<void>(resolve=>{
-   const tick=()=>{
-    while(running.size<maxParallel){
-     const ready=[...pending.values()].filter(t=>t.dependencies.every(dep=>completed.has(dep)));
-     for(const task of ready)if(!readyAt.has(task.id)){readyAt.set(task.id,this.now());this.metrics.taskReady(task.id);}
-     const next=pickNext(ready,readyAt,this.now(),agingMs);
-     if(!next)break;
-     pending.delete(next.id);
-     const job=execute(next).catch(()=>undefined).finally(()=>{running.delete(next.id);this.slots.notify();tick();});
-     running.set(next.id,job);
-    }
-    if(running.size===0)resolve();
+   const readyAt=new Map<string,number>(),running=new Map<string,Promise<void>>();
+   const execute=async(task:TaskPlanValue)=>{
+    this.metrics.taskStarted(task.id);this.emit(plan.projectId,"task.started",{taskId:task.id});
+    let outcome:TaskOutcome;
+    try{
+     const result=await this.advance(plan,task,counters);
+     if(result==="DONE"){
+      outcome="DONE";completed.add(task.id);states.set(task.id,"DONE");waves=Math.max(waves,level(task));
+      await this.state.memory.recordStatus(plan.projectId,task.id,"DONE");
+      const checkpoint=await this.state.checkpoints.load(plan.projectId,task.id);
+      if(checkpoint)await this.state.checkpoints.save(plan.projectId,{...checkpoint,at:new Date().toISOString(),status:"DONE",remaining:[]});
+     }else if(result==="PAUSED"){outcome="PAUSED";paused.add(task.id);states.set(task.id,"PAUSED_CAPACITY");}
+     else{outcome="APPROVAL_REQUIRED";approvalRequired.add(task.id);states.set(task.id,"APPROVAL_REQUIRED");}
+    }catch(error){outcome="FAILED";failed.add(task.id);states.set(task.id,"BLOCKED");await this.fail(plan,task,error);}
+    this.metrics.taskFinished(task.id,outcome);this.emit(plan.projectId,"task.finished",{taskId:task.id,detail:outcome});
+    await syncPlan();
    };
-   tick();
-  });
+   // Event-driven DAG scheduler: a task starts the moment its dependencies are done and a project slot is free.
+   await new Promise<void>(resolve=>{
+    const tick=()=>{
+     while(running.size<maxParallel){
+      const ready=[...pending.values()].filter(t=>t.dependencies.every(dep=>completed.has(dep)));
+      for(const task of ready)if(!readyAt.has(task.id)){readyAt.set(task.id,this.now());this.metrics.taskReady(task.id);}
+      const next=pickNext(ready,readyAt,this.now(),agingMs);
+      if(!next)break;
+      pending.delete(next.id);
+      const job=execute(next).catch(()=>undefined).finally(()=>{running.delete(next.id);this.slots.notify();tick();});
+      running.set(next.id,job);
+     }
+     if(running.size===0)resolve();
+    };
+    tick();
+   });
+  };
+  let reworkRounds=0;
+  for(;;){
+   await round();
+   // QA rework only starts when everything else finished cleanly.
+   if(failed.size||paused.size||approvalRequired.size||pending.size)break;
+   if(!await this.startQAReworkRound(plan))break;
+   reworkRounds++;
+  }
   const waiting=[...pending.keys()];
   for(const id of waiting)states.set(id,"WAITING");
   await syncPlan();
   const budget=budgetReport(plan.budget,await this.state.executions.list(plan.projectId));
   this.emit(plan.projectId,"run.finished",{detail:failed.size?"failed":paused.size||approvalRequired.size||waiting.length?"parked":"done"});
   await this.telemetry;
-  return {projectId:plan.projectId,runId:this.runId,completed:[...completed],paused:[...paused],approvalRequired:[...approvalRequired],failed:[...failed],waiting,skipped:[...skipped],waves,...counters,budget,metrics:this.metrics.snapshot()};
+  return {projectId:plan.projectId,runId:this.runId,completed:[...completed],paused:[...paused],approvalRequired:[...approvalRequired],failed:[...failed],waiting,skipped:[...skipped],waves,...counters,qaReworkRounds:await this.state.rework.rounds(plan.projectId),budget,metrics:this.metrics.snapshot()};
  }
 }

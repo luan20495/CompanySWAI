@@ -13,7 +13,7 @@ export type RunTask={
  projectId:string;taskId:string;agentRole:string;department?:string;kind:"maker"|"review";produces?:string[];
  inputRefs:string[];system:string;prompt:string;maxTokens:number;contract?:ContractRequirement;
  /** Facts only the orchestrator knows (for example the requirement IDs QA must cover); passed to validators. */
- validationContext?:{requirementIds?:string[];retrievedUrls?:string[]};
+ validationContext?:{requirementIds?:string[];retrievedUrls?:string[];ownerCandidates?:string[]};
  /** Documents the research connectors retrieved for this task (shown to the agent, enforced by the research validator). */
  retrieved?:Array<{url:string;title:string;retrieved:string;authority:string;published?:string}>;
  /** Which context this execution was built from: the proof of what it was (and was not) given. */
@@ -56,7 +56,7 @@ export class TaskRunner{
   const requirement=task.contract??{sections:[],verdict:false};
   return [
    ...contractViolations(text,requirement),
-   ...runValidators(requirement.validators??[],text,{params:requirement.params??{},requirementIds:task.validationContext?.requirementIds,retrievedUrls:task.validationContext?.retrievedUrls}).problems
+   ...runValidators(requirement.validators??[],text,{params:requirement.params??{},requirementIds:task.validationContext?.requirementIds,ownerCandidates:task.validationContext?.ownerCandidates,retrievedUrls:task.validationContext?.retrievedUrls}).problems
   ];
  }
 
@@ -65,7 +65,7 @@ export class TaskRunner{
   await this.state.memory.recordStatus(task.projectId,task.taskId,"STARTED",provider.name+"/"+provider.model);
   await this.state.executions.append({...base,status:"STARTED"});
   try{
-   const meta={taskId:task.taskId,kind:task.kind,sections:task.contract?.sections??[],validators:task.contract?.validators??[],params:task.contract?.params??{},requirementIds:task.validationContext?.requirementIds,slot:task.slot,retrieved:task.retrieved};
+   const meta={taskId:task.taskId,kind:task.kind,sections:task.contract?.sections??[],validators:task.contract?.validators??[],params:task.contract?.params??{},requirementIds:task.validationContext?.requirementIds,ownerCandidates:task.validationContext?.ownerCandidates,slot:task.slot,retrieved:task.retrieved};
    let response=await provider.generate({system:task.system,prompt:task.prompt,maxTokens:task.maxTokens,meta});
    let inputTokens=response.inputTokens,outputTokens=response.outputTokens,answeredBy=response.model;
    let problems=this.problemsIn(task,response.text);

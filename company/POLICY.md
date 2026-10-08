@@ -13,17 +13,17 @@ modes: {
  "FAST":{
   "reviewRisks":["high","critical"],
   "levelByRisk":{"high":"NORMAL","critical":"NORMAL"},
-  "routing":"COST_FIRST","minQualityTier":1,"requiredGates":["project-checks"],"qa":"light"
+  "routing":"COST_FIRST","minQualityTier":1,"requiredGates":["project-checks"],"qa":"light","qaReworkRounds":1
  },
  "BALANCED":{
   "reviewRisks":["low","medium","high","critical"],
   "levelByRisk":{"low":"NORMAL","medium":"NORMAL","high":"NORMAL","critical":"CRITICAL"},
-  "routing":"BALANCED","minQualityTier":3,"requiredGates":["typecheck","unit-tests","project-checks"],"qa":"standard"
+  "routing":"BALANCED","minQualityTier":3,"requiredGates":["typecheck","unit-tests","project-checks"],"qa":"standard","qaReworkRounds":2
  },
  "MAX_QUALITY":{
   "reviewRisks":["low","medium","high","critical"],
   "levelByRisk":{"low":"NORMAL","medium":"NORMAL","high":"CRITICAL","critical":"HIGH_RISK"},
-  "routing":"QUALITY_FIRST","minQualityTier":4,"requiredGates":["typecheck","unit-tests","integration-tests","lint","build","security","project-checks"],"qa":"deep"
+  "routing":"QUALITY_FIRST","minQualityTier":4,"requiredGates":["typecheck","unit-tests","integration-tests","lint","build","security","project-checks"],"qa":"deep","qaReworkRounds":3
  }
 }
 ---
@@ -40,5 +40,7 @@ Quality mode (`FAST`, `BALANCED`, `MAX_QUALITY`, chosen in the project brief) de
 - **FAST**: reviews only high and critical risk work; cheapest eligible provider; light QA.
 - **BALANCED**: every reviewable task is reviewed; critical work is double-reviewed; balanced routing.
 - **MAX_QUALITY**: strongest eligible provider tier, critical work is HIGH_RISK, high-risk work is double-reviewed, all applicable code gates, deep QA, architecture/security/performance lenses wherever the project signals need them.
+
+When QA reports FAIL, the findings go back to the maker that owns the failing work (never to every agent): its rework passes the same gates and independent review again, then QA re-verifies, for at most `qaReworkRounds` rounds. BLOCKED and NOT_APPLICABLE results never trigger rework.
 
 A reviewer receives only the task requirements, the artifact/diff, the architecture and decisions that apply, and test evidence. It never receives the maker's reasoning, conversation or unrelated project context.
