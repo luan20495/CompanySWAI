@@ -179,7 +179,9 @@ export class ProjectOrchestrator{
   return documents.length?{...base,retrieved:documents.map(d=>({url:d.url,title:d.title,retrieved:d.retrieved,authority:d.authority,published:d.published})),validationContext:{...base.validationContext,retrievedUrls:documents.map(d=>d.url)}}:base;
  }
  private async makerRunBase(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs=task.inputRefs):Promise<RunTask>{
-  return {projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,requiredGates:task.requiredGates,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
+  // Isolated work starts from the repository state the model is shown now, so a later integration detects overlapping edits.
+  const baseSha=plan.workspace?.isolation==="worktree"?(await new LocalRepoWorkspace(plan.workspace.path).git(["rev-parse","HEAD"])).stdout.trim():undefined;
+  return {baseSha,projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,requiredGates:task.requiredGates,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
  }
 
  private async waitForApproval(projectId:string,key:string,cost:number){

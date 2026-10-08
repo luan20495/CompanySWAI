@@ -75,6 +75,6 @@ export function reviewContext(input:ReviewContextInput):BuiltContext{
  const evidence=[...maker.evidence,...maker.gates.map(g=>"gate "+g.name+": "+g.status+(g.detail?" — "+g.detail:""))].join("\n");
  parts.push("--- DETERMINISTIC TEST EVIDENCE (from the runtime) ---\n"+(evidence?clip(evidence,limit):"(none: no code gates ran for this step; the author's ## Evidence section is in the artifact)"));
  manifest.push({ref:"evidence:"+task.id,sections:["gates"],chars:evidence.length});
- if(input.previousFindings)parts.push("--- YOUR PREVIOUS FINDINGS (verify each is resolved) ---\n"+clip(input.previousFindings,limit));
+ if(input.previousFindings)parts.push("--- YOUR PREVIOUS FINDINGS (this is a re-review) ---\n"+clip(input.previousFindings,limit)+"\n\nVerify each finding above against the revised artifact first. Raise a new blocker only for a real defect the revision introduced or that you missed and that would cause failure; do not widen your demands round after round.");
  return {prompt:parts.join("\n\n"),manifest};
 }

@@ -95,7 +95,8 @@ test("conflicting parallel changes are detected, rolled back cleanly and re-aske
  const selector=selectorFor(async request=>{
   prompts.push(request.prompt);
   const who=request.prompt.split(" ")[0];
-  if(who==="late"){await sleep(120);return usage(block(/INTEGRATION CONFLICT/.test(request.prompt)?"late-only.txt":"shared.txt",/INTEGRATION CONFLICT/.test(request.prompt)?"late retry":"late version"));}
+  if(who==="late"&&!/INTEGRATION CONFLICT/.test(request.prompt)){const until=Date.now()+8000;while(git(root,"log","--oneline").split("\n").length<2&&Date.now()<until)await sleep(10);}
+  if(who==="late"){return usage(block(/INTEGRATION CONFLICT/.test(request.prompt)?"late-only.txt":"shared.txt",/INTEGRATION CONFLICT/.test(request.prompt)?"late retry":"late version"));}
   return usage(block("shared.txt","early version"));
  },[{id:"p",maxConcurrency:4}]);
  const workspace={path:root,checks:[],gates:{"unit-tests":[ok]},autoCommit:true,isolation:"worktree" as const};

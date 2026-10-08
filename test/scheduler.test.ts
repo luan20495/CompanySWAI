@@ -100,7 +100,7 @@ test("telemetry events and the status view show current, queued, running and fin
  const selector=selectorFor(async request=>{if(request.prompt.startsWith("slow"))await gate;return usage(compliant());},[profile("p",{maxConcurrency:4})]);
  const p=plan("tel",[task("fast",{prompt:"fast work"}),task("slow",{prompt:"slow work"}),task("after",{dependencies:["slow"],prompt:"after work"})]);
  const running=new ProjectOrchestrator(selector,state).run(p);
- await sleep(150);
+ for(const until=Date.now()+8000;Date.now()<until;){const ev=await state.telemetry.list("tel");if(ev.some(e=>e.type==="task.started"&&e.taskId==="slow")&&ev.some(e=>e.type==="task.finished"&&e.taskId==="fast")&&ev.some(e=>e.type==="provider.selected"&&e.taskId==="slow"))break;await sleep(10);}
  const mid=buildProjectStatus("tel",await state.telemetry.list("tel"),await state.executions.list("tel"),{planTasks:["fast","slow","after"],isAlive:()=>true});
  assert.equal(mid.state,"RUNNING");assert.deepEqual(mid.running.map(r=>r.taskId),["slow"]);assert.deepEqual(mid.completed,["fast"]);assert.deepEqual(mid.queued,["after"]);assert.equal(mid.running[0].profileId,"p");
  const crashed=buildProjectStatus("tel",await state.telemetry.list("tel"),await state.executions.list("tel"),{planTasks:["fast","slow","after"],isAlive:()=>false});

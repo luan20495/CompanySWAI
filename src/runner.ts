@@ -17,7 +17,7 @@ export type RunTask={
  /** Documents the research connectors retrieved for this task (shown to the agent, enforced by the research validator). */
  retrieved?:Array<{url:string;title:string;retrieved:string;authority:string;published?:string}>;
  /** Which context this execution was built from: the proof of what it was (and was not) given. */
- contextRefs?:string[];slot?:number;profileId?:string;reviewedTaskId?:string;
+ contextRefs?:string[];slot?:number;profileId?:string;reviewedTaskId?:string;baseSha?:string;
  estimatedCost?:number;inputCostPerMillion?:number;outputCostPerMillion?:number;billing?:"metered"|"subscription";
  /** Code gates (typecheck, unit-tests, …) this task must pass when it delivers code. */
  requiredGates?:string[];
@@ -45,7 +45,7 @@ export class TaskRunner{
  constructor(private state:CompanyState){}
 
  private base(task:RunTask,id:string,startedAt:string,provider:{name:string;model:string}){
-  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost,billing:task.billing??"metered",profileId:task.profileId,slot:task.slot,contextRefs:task.contextRefs??[]};
+  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost,billing:task.billing??"metered",profileId:task.profileId,baseSha:task.baseSha,slot:task.slot,contextRefs:task.contextRefs??[]};
  }
 
  async run(task:RunTask,provider:ModelProvider){
@@ -128,10 +128,10 @@ export class TaskRunner{
  }
 
  /** Applies delivered code: in the main workspace, or in an isolated worktree that is integrated once its gates pass. */
- private async applyCode(task:RunTask,patches:FilePatch[]){
+ private async applyCode(task:RunTask,patches:FilePatch[],baseSha?:string){
   const ws=task.workspace!,{gates,integration}=this.resolveGates(task),message="CompanySWAI: "+task.taskId;
   if(ws.isolation==="worktree"){
-   return runIsolated({repo:ws.path,stateRoot:this.state.root,projectId:task.projectId,taskId:task.taskId,patches,gates,setup:ws.setup,integrationGates:integration,commitMessage:message});
+   return runIsolated({repo:ws.path,stateRoot:this.state.root,projectId:task.projectId,taskId:task.taskId,baseSha:baseSha??task.baseSha,patches,gates,setup:ws.setup,integrationGates:integration,commitMessage:message});
   }
   return new LocalRepoWorkspace(ws.path).transaction(patches,[],ws.autoCommit?message:undefined,{gates});
  }
@@ -144,7 +144,7 @@ export class TaskRunner{
    let changedFiles:string[]=[],commitSha:string|undefined,evidence:string[]=[],gates:GateResult[]=[];
    if(patches.length){
     if(!task.workspace)throw new WorkspaceError("Agent produced file patches but project has no workspace configured","INVALID_WORKSPACE");
-    const result=await this.applyCode(task,patches);
+    const result=await this.applyCode(task,patches,checkpointed.baseSha);
     changedFiles=result.changedFiles;commitSha=result.commitSha;evidence=result.evidence;gates=result.gates;
    }
    const parsed=parseAgentOutput(output),artifactId=clip(task.taskId+"-"+id.slice(0,8));

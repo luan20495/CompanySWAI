@@ -22,14 +22,14 @@ export class WorktreeManager{
  constructor(readonly repo:string,readonly root:string){this.main=new LocalRepoWorkspace(repo);this.root=resolve(root);}
  pathFor(projectId:string,taskId:string){return join(this.root,SafeId.parse(projectId),SafeId.parse(taskId));}
 
- /** Fresh detached worktree at the main workspace's current HEAD; any leftover from a crash is replaced. */
- async create(projectId:string,taskId:string):Promise<Worktree>{
+ /** Fresh detached worktree at `baseRef` (default: the main workspace's current HEAD); any leftover from a crash is replaced. */
+ async create(projectId:string,taskId:string,baseRef?:string):Promise<Worktree>{
   await this.main.validate({requireGit:true});
   const path=this.pathFor(projectId,taskId);
   await this.remove(projectId,taskId);
   await mkdir(join(this.root,projectId),{recursive:true});
   try{
-   const base=(await this.main.git(["rev-parse","HEAD"])).stdout.trim();
+   const base=(await this.main.git(["rev-parse",baseRef??"HEAD"])).stdout.trim();
    await this.main.git(["worktree","add","--detach",path,base]);
    return {path,base,projectId,taskId};
   }catch(error){throw new WorkspaceError("Could not create worktree for "+taskId+": "+(error as Error).message,"WORKTREE_FAILED");}
@@ -82,13 +82,13 @@ export class WorktreeManager{
 }
 
 export type IsolatedRun={
- repo:string;stateRoot:string;projectId:string;taskId:string;patches:FilePatch[];gates:GateRun[];setup:CheckCommandSpec[];
+ repo:string;stateRoot:string;projectId:string;taskId:string;/** HEAD at the time the model saw the repository; defaults to the current HEAD. */baseSha?:string;patches:FilePatch[];gates:GateRun[];setup:CheckCommandSpec[];
  integrationGates:GateRun[];commitMessage:string;
 };
 
 /** The whole isolated flow for one coding task. The worktree is always removed, success or failure. */
 export async function runIsolated(run:IsolatedRun):Promise<TransactionResult>{
- const manager=new WorktreeManager(run.repo,join(run.stateRoot,"worktrees")),wt=await manager.create(run.projectId,run.taskId);
+ const manager=new WorktreeManager(run.repo,join(run.stateRoot,"worktrees")),wt=await manager.create(run.projectId,run.taskId,run.baseSha);
  try{
   const inside=new LocalRepoWorkspace(wt.path);
   if(run.setup.length)await inside.runChecks(run.setup);

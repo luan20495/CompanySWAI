@@ -8,7 +8,7 @@ export const ExecutionRecord=z.object({
  artifactRefs:z.array(z.string()).default([]),decisionRefs:z.array(z.string()).default([]),reviewRefs:z.array(z.string()).default([]),blockerRefs:z.array(z.string()).default([]),
  inputTokens:z.number().int().nonnegative().default(0),outputTokens:z.number().int().nonnegative().default(0),estimatedCost:z.number().nonnegative().optional(),actualCost:z.number().nonnegative().optional(),
  billing:z.enum(["metered","subscription"]).default("metered"),
- profileId:z.string().optional(),slot:z.number().int().nonnegative().optional(),contextRefs:z.array(z.string()).default([]),
+ profileId:z.string().optional(),/** Repository HEAD the model saw when this step was built (isolated worktrees start from it, so overlapping edits conflict instead of silently overwriting). */baseSha:z.string().optional(),slot:z.number().int().nonnegative().optional(),contextRefs:z.array(z.string()).default([]),
  gates:z.array(z.object({name:z.string(),status:z.enum(["PASS","FAIL","NOT_CONFIGURED","NOT_APPLICABLE"]),detail:z.string().optional()})).default([]),changedFiles:z.array(z.string()).default([]),commitSha:z.string().optional(),evidence:z.array(z.string()).default([]),error:z.string().optional()
 });
 export type ExecutionRecordValue=z.infer<typeof ExecutionRecord>;

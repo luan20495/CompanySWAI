@@ -47,6 +47,7 @@ test("CRITICAL review: one CHANGES_REQUIRED sends the work back with all finding
  assert.ok(second.some(p=>/YOUR PREVIOUS FINDINGS[\s\S]*SLOT-TWO-FINDING/.test(p)));
  assert.ok(second.filter(p=>/YOUR PREVIOUS FINDINGS/.test(p)).every(p=>/fine|SLOT-TWO/.test(p)));
  assert.equal(second.filter(p=>p.includes("SLOT-TWO-FINDING")).length,1,"only the reviewer who wrote the finding is reminded of it");
+ assert.ok(second.filter(p=>/YOUR PREVIOUS FINDINGS/.test(p)).every(p=>/this is a re-review[\s\S]*do not widen your demands/.test(p)),"re-reviews are told to verify, not to widen");
 });
 
 test("HIGH_RISK: the second reviewer applies the security lens and passing deterministic checks are required",async()=>{
