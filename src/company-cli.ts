@@ -5,7 +5,8 @@ import {compileBriefToProjectPlan} from "./plan-compiler.js";
 import {ProjectPlan} from "./project.js";
 import {ProjectOrchestrator} from "./orchestrator.js";
 import {loadRuntime} from "./runtime.js";
-import {buildRetrospective} from "./retrospective.js";
+import {closeProject} from "./closeout.js";
+import {MarkdownAgentRegistry} from "./md-agent-loader.js";
 import {dryRunSelector} from "./providers/dry-run.js";
 import {CompanyState} from "./state.js";
 
@@ -24,14 +25,14 @@ const raw=JSON.parse(await readFile(inputPath,"utf8"));
 // A plan resumes exactly as written; a brief is recompiled (deterministically) and resumes from the persisted execution log.
 const plan=raw&&typeof raw==="object"&&"tasks" in raw?ProjectPlan.parse(raw):await (async()=>{
  const brief=ProjectBrief.parse(raw),prior=await state.retrospectives.load(brief.projectId);
- return compileBriefToProjectPlan(brief,[...(prior?.lessons??[]),...await state.experience.validatedLessons()]);
+ return compileBriefToProjectPlan(brief,{projectLessons:prior?.lessons,experience:await state.experience.validatedLessons()});
 })();
 
 const selector=dryRun?dryRunSelector():(await loadRuntime(runtimePath)).selector;
 const orchestrator=new ProjectOrchestrator(selector,state,waitArg?{approvalWait:{pollMs:2000,timeoutMs:waitSeconds*1000}}:{});
 const summary=await orchestrator.run(plan);
-const retrospective=await state.retrospectives.save(buildRetrospective(plan.projectId,await state.executions.list(plan.projectId)));
-const experience=await state.experience.observe(retrospective);
+const knownRoles=(await new MarkdownAgentRegistry().loadAll()).map(agent=>agent.id);
+const {retrospective,experience}=await closeProject(state,summary,{dryRun,knownRoles});
 
 console.log(JSON.stringify({summary,retrospective,validatedExperience:experience.filter(x=>x.status==="VALIDATED")},null,2));
 // Exit codes: 1 = a task failed, 2 = run is parked (capacity/approval/blocked dependents) and can be resumed, 0 = everything done.
