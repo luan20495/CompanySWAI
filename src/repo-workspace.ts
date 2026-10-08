@@ -3,6 +3,7 @@ import {dirname,isAbsolute,relative,resolve} from "node:path";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {containsSecret,redact,sanitizedEnv} from "./secrets.js";
+import {serialised} from "./serialize.js";
 const execFileAsync=promisify(execFile);
 
 export type FilePatch={path:string;content:string};
@@ -108,6 +109,10 @@ export class LocalRepoWorkspace{
   * Any failure restores the previous file contents and removes files and directories the patch created.
   */
  async transaction(requested:FilePatch[],checks:CheckCommandSpec[]=[],commitMessage?:string,options:{gates?:GateRun[]}={}):Promise<TransactionResult>{
+  // One transaction at a time per working tree: parallel tasks sharing a tree must not interleave writes, gates or git index operations.
+  return serialised("tree:"+resolve(this.root),()=>this.transactionLocked(requested,checks,commitMessage,options));
+ }
+ private async transactionLocked(requested:FilePatch[],checks:CheckCommandSpec[],commitMessage:string|undefined,options:{gates?:GateRun[]}):Promise<TransactionResult>{
   await this.validate({requireGit:commitMessage!=null});
   let patches=requested;
   const targets=new Map<string,FilePatch>();

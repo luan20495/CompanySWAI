@@ -2,6 +2,7 @@ import {mkdir,readdir,rm,stat} from "node:fs/promises";
 import {join,resolve} from "node:path";
 import {LocalRepoWorkspace,WorkspaceError,describeCheck,type CheckCommandSpec,type FilePatch,type GateRun,type TransactionResult} from "./repo-workspace.js";
 import {SafeId} from "./ids.js";
+import {serialised} from "./serialize.js";
 
 /**
  * Isolated git worktrees for parallel coding tasks. Each task works in its own detached worktree
@@ -9,12 +10,6 @@ import {SafeId} from "./ids.js";
  * serialised, conflict-checked, verified again, and reverted if the integrated tree fails its checks.
  * Detached worktrees create no branches.
  */
-const locks=new Map<string,Promise<unknown>>();
-function serialised<T>(key:string,fn:()=>Promise<T>):Promise<T>{
- const next=(locks.get(key)??Promise.resolve()).catch(()=>undefined).then(fn);
- locks.set(key,next);return next;
-}
-
 export type Worktree={path:string;base:string;projectId:string;taskId:string};
 
 export class WorktreeManager{
