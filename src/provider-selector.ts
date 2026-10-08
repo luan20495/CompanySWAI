@@ -4,7 +4,7 @@ import {eligible,estimateCost,routeTask} from "./capacity.js";
 import {CapacityUnavailableError} from "./errors.js";
 
 export type ProviderSelectionRequest={preferredProvider?:string;preferredModel?:string;demand:TaskDemand;exclude?:Array<{provider:string;model:string}>;};
-export type ProviderSelection={provider:ModelProvider;profile:CapacityProfile;estimatedCost?:number;reservedTokens:number;reservedCost?:number;};
+export type ProviderSelection={provider:ModelProvider;profile:CapacityProfile;estimatedCost?:number;reservedTokens?:number;reservedCost?:number;};
 export type UsageReport={inputTokens:number;outputTokens:number;actualCost?:number};
 export type ProviderSelector=((request:ProviderSelectionRequest)=>ProviderSelection)&{
  reportSuccess?:(selection:ProviderSelection,usage:UsageReport)=>void;
@@ -37,7 +37,7 @@ export function createCapacitySelector(profiles:CapacityProfile[],instantiate:Pr
  }) as ProviderSelector;
  selector.reportSuccess=(selection,usage)=>{
   const profile=find(selection);if(!profile)return;
-  const actualTokens=usage.inputTokens+usage.outputTokens,tokenDelta=selection.reservedTokens-actualTokens;
+  const actualTokens=usage.inputTokens+usage.outputTokens,tokenDelta=(selection.reservedTokens??0)-actualTokens;
   if(profile.tokenQuotaRemaining!=null)profile.tokenQuotaRemaining=Math.max(0,profile.tokenQuotaRemaining+tokenDelta);
   if(profile.creditRemaining!=null&&selection.reservedCost!=null&&usage.actualCost!=null)profile.creditRemaining=Math.max(0,profile.creditRemaining+(selection.reservedCost-usage.actualCost));
  };
