@@ -1,18 +1,16 @@
 # Memory and organizational learning
 
 ## Project Memory
-Project-specific facts: requirements, domain rules, architecture, APIs, decisions, designs, code knowledge and delivery history.
-It is isolated by project and must not silently become a company-wide rule.
+Project-specific facts remain isolated under `.companyswai/projects/<project>/` and project retrospective storage. They are not automatically treated as universal company rules.
 
 ## Company Experience
-Reusable collaboration knowledge: effective handoffs, review patterns, decomposition heuristics, recurring failure modes, quality checks and cost/token lessons.
+Only reusable execution lessons are eligible for cross-project promotion. CompanySWAI stores these in `.companyswai/company-experience.json`.
 
-## Promotion pipeline
-1. Retrospective creates an Experience Candidate.
-2. Candidate cites evidence and the projects/milestones where it was observed.
-3. A reviewer challenges generality, confounders and harmful side effects.
-4. Only VALIDATED candidates enter Company Experience.
-5. Company rules remain versioned and reversible.
-6. Later evidence can deprecate or replace a rule.
+## Promotion
+1. A retrospective emits generic execution lessons.
+2. The lesson enters Company Experience as `CANDIDATE`.
+3. The same lesson must be observed in at least two distinct projects before becoming `VALIDATED`.
+4. Only validated lessons are injected into future plans across projects.
+5. Project-specific requirements, product decisions, secrets and domain data are never promoted by this mechanism.
 
-Never promote a product/domain decision merely because it worked once.
+This is deliberately conservative: one successful or failed project is not enough to rewrite company behaviour.
