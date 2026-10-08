@@ -18,7 +18,7 @@ function recording(handler:(request:ModelRequest)=>string){
 
 test("a reviewer never receives the maker's system prompt or reasoning — only requirements, the complete artifact, upstream context and evidence",async()=>{
  const maker=compliant("the delivered widget",{decisions:"Chose option B.",handoff:"HANDOFF-CHATTER"});
- const withReasoning="I first considered option A at length. SECRET-REASONING-TRACE\n\n"+maker+"\n\n## Scratch\nPRIVATE-SCRATCH-NOTES";
+ const withReasoning="I first considered option A at length. SECRET-REASONING-TRACE\nPRIVATE-SCRATCH-NOTES\n\n"+maker+"\n\n## Open items register\nOI-01: confirm tenancy (owner: product)";
  const {requests,selector}=recording(request=>isReviewRequest(request)?pass("reviewed"):withReasoning);
  const state=await tmpState();
  await new ProjectOrchestrator(selector,state).run(plan("iso1",[task("a",{contract,system:"MAKER-SYSTEM-PROMPT",prompt:"Build the widget"}),task("b",{dependencies:["a"],contract,system:"MAKER-B-SYSTEM",prompt:"Use the widget",review:reviewer({system:"REVIEWER-SYSTEM"})})]));
@@ -29,6 +29,7 @@ test("a reviewer never receives the maker's system prompt or reasoning — only 
  assert.match(review.prompt,/Chose option B/,"decisions are relevant to review");
  assert.match(review.prompt,/UPSTREAM a/,"the context the author was given is shared");
  assert.match(review.prompt,/ARTIFACT UNDER REVIEW[\s\S]*## Evidence\nchecked[\s\S]*## Handoff\nHANDOFF-CHATTER/,"Evidence and Handoff are sections of the artifact and are reviewed with it");
+ assert.match(review.prompt,/## Open items register\nOI-01/,"extra sections the author wrote are part of the artifact (regression: the second live run lost its register to a section whitelist)");
  for(const leaked of ["SECRET-REASONING-TRACE","PRIVATE-SCRATCH-NOTES","MAKER-SYSTEM-PROMPT","MAKER-B-SYSTEM"])assert.ok(!review.prompt.includes(leaked)&&!review.system.includes(leaked),leaked);
 });
 

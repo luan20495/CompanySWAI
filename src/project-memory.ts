@@ -3,7 +3,7 @@ import {join} from "node:path";
 import {ProjectPlan,type ProjectPlanInput} from "./project.js";
 import {SafeId} from "./ids.js";
 import {loadMemoryRouting,type MemoryRouting} from "./company.js";
-import {pickSections} from "./context.js";
+import {sectionsExcept} from "./context.js";
 import {redact} from "./secrets.js";
 
 export const MEMORY_FILES=["PLAN.md","REQUIREMENTS.md","ARCHITECTURE.md","DECISIONS.md","HANDOFFS.md","REVIEWS.md","BLOCKERS.md","QA.md","STATUS.md","RETROSPECTIVE.md"] as const;
@@ -76,7 +76,7 @@ export class ProjectMemoryStore{
   */
  async recordOutput(projectId:string,task:{taskId:string;agentRole:string;produces:string[];sections:string[]},artifactId:string,output:string){
   const {routes,fallback}=await this.routes(),files=[...new Set(task.produces.map(a=>routes[a]).filter(Boolean))],heading=task.taskId+" — "+task.agentRole+" ("+artifactId+")";
-  const titles=task.sections.filter(title=>!ROUTED_ELSEWHERE.includes(title)),view=pickSections(output,titles);
+  const view=sectionsExcept(output,ROUTED_ELSEWHERE);
   const body=(text:string,limit:number)=>clip(text,limit,"full text in artifact "+artifactId);
   const rendered=view.map(p=>p.title?"### "+p.title+"\n"+p.body:p.body).join("\n\n");
   if(!files.length){await this.upsert(projectId,fallback,"output:"+task.taskId,heading+" — summary",body(rendered,SUMMARY_CHARS));return;}

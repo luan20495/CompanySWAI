@@ -1,4 +1,4 @@
-import {REVIEW_REQUEST_PREFIX,section} from "./output-parser.js";
+import {REVIEW_REQUEST_PREFIX} from "./output-parser.js";
 import type {ExecutionRecordValue} from "./execution-record.js";
 import type {TaskPlanValue} from "./project.js";
 
@@ -13,17 +13,27 @@ export type BuiltContext={prompt:string;manifest:ContextEntry[]};
 const TRUNCATED="\n…[truncated; the full artifact is persisted]";
 const clip=(text:string,limit:number)=>text.length>limit?text.slice(0,limit)+TRUNCATED:text;
 
-/** The named sections of an output, in the order requested. Falls back to the whole text for outputs without any section. */
-export function pickSections(output:string,titles:string[]){
- const picked=titles.map(title=>({title,body:section(output,title)})).filter((x):x is {title:string;body:string}=>Boolean(x.body));
- return picked.length?picked:[{title:"",body:output.trim()}];
+/** Every level-2 section of an output, in order. Text before the first heading (preamble, reasoning) is not part of the artifact. */
+export function allSections(output:string):Array<{title:string;body:string}>{
+ const out:Array<{title:string;body:string}>=[];let current:{title:string;lines:string[]}|undefined;
+ for(const line of output.split(/\r?\n/)){
+  const heading=line.match(/^##\s+(.+?)\s*$/);
+  if(heading){if(current)out.push({title:current.title,body:current.lines.join("\n").trim()});current={title:heading[1],lines:[]};}
+  else current?.lines.push(line);
+ }
+ if(current)out.push({title:current.title,body:current.lines.join("\n").trim()});
+ return out;
+}
+/**
+ * The artifact as other agents see it: every section the author wrote (including extra ones such as an open-items
+ * register), minus the named ones; preamble text is dropped. Outputs without any section fall back to the whole text.
+ */
+export function sectionsExcept(output:string,excluded:string[]=[]){
+ const skip=new Set(excluded.map(t=>t.toLowerCase())),parts=allSections(output).filter(p=>p.body&&!skip.has(p.title.toLowerCase()));
+ return parts.length?parts:[{title:"",body:output.trim()}];
 }
 const render=(parts:Array<{title:string;body:string}>,limit:number)=>clip(parts.map(p=>p.title?"## "+p.title+"\n"+p.body:p.body).join("\n\n"),limit);
-
-/** Sections of an upstream artifact that downstream agents may see: its contract sections minus evidence and handoff chatter. */
-function downstreamSections(task:TaskPlanValue,exclude:string[]){
- return task.contract.sections.filter(title=>!exclude.includes(title));
-}
+const titlesOf=(parts:Array<{title:string}>)=>parts.map(p=>p.title).filter(Boolean);
 
 export type Upstream={task:TaskPlanValue;output:string};
 
@@ -31,8 +41,8 @@ export function makerContext(task:TaskPlanValue,upstream:Upstream[],limit:number
  if(!upstream.length)return {prompt:task.prompt,manifest:[]};
  const manifest:ContextEntry[]=[],blocks:string[]=[];
  for(const dep of upstream){
-  const titles=downstreamSections(dep.task,["Evidence"]),body=render(pickSections(dep.output,titles),limit);
-  blocks.push("UPSTREAM "+dep.task.id+"\n"+body);manifest.push({ref:"artifact:"+dep.task.id,sections:titles,chars:body.length});
+  const parts=sectionsExcept(dep.output,["Evidence"]),body=render(parts,limit);
+  blocks.push("UPSTREAM "+dep.task.id+"\n"+body);manifest.push({ref:"artifact:"+dep.task.id,sections:titlesOf(parts),chars:body.length});
  }
  return {prompt:task.prompt+"\n\n--- UPSTREAM ARTIFACTS ---\n"+blocks.join("\n\n"),manifest};
 }
@@ -47,16 +57,15 @@ export function reviewContext(input:ReviewContextInput):BuiltContext{
  const {task,maker,upstream,limit,slot,slots}=input,manifest:ContextEntry[]=[];
  // The reviewer sees the whole artifact — every section of the contract the maker had to satisfy (Evidence and Handoff
  // included, because reviewing them is part of review). Only text outside those sections (reasoning, scratch) is withheld.
- const artifactTitles=task.contract.sections;
- const artifact=render(pickSections(maker.output,artifactTitles),input.artifactLimit??limit);
- manifest.push({ref:"artifact:"+task.id,sections:artifactTitles,chars:artifact.length});
+ const artifactParts=sectionsExcept(maker.output),artifact=render(artifactParts,input.artifactLimit??limit);
+ manifest.push({ref:"artifact:"+task.id,sections:titlesOf(artifactParts),chars:artifact.length});
  const parts:string[]=[REVIEW_REQUEST_PREFIX+" The first non-empty line MUST be PASS or CHANGES_REQUIRED."];
  if(slots>1)parts.push("You are independent reviewer "+(slot+1)+" of "+slots+". You cannot see the other reviewers or the author's reasoning.");
  parts.push("--- TASK REQUIREMENTS ---\n"+task.prompt);
  if(upstream.length){
   const blocks=upstream.map(dep=>{
-   const titles=downstreamSections(dep.task,["Evidence","Handoff","Blockers"]),body=render(pickSections(dep.output,titles),limit);
-   manifest.push({ref:"upstream:"+dep.task.id,sections:titles,chars:body.length});return "UPSTREAM "+dep.task.id+"\n"+body;
+   const parts=sectionsExcept(dep.output,["Evidence","Handoff","Blockers"]),body=render(parts,limit);
+   manifest.push({ref:"upstream:"+dep.task.id,sections:titlesOf(parts),chars:body.length});return "UPSTREAM "+dep.task.id+"\n"+body;
   });
   parts.push("--- UPSTREAM CONTEXT THE AUTHOR WAS GIVEN ---\n"+blocks.join("\n\n"));
  }
