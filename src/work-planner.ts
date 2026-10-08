@@ -10,7 +10,8 @@ export const ProjectBrief=z.object({
  complexity:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4),z.literal(5)]),mobileSkills:z.array(z.string()).optional(),
  workspacePath:z.string().min(1).optional(),checks:z.array(CheckCommand).default([]),autoCommit:z.boolean().default(false)
 });
-export type ProjectBriefValue=z.infer<typeof ProjectBrief>;\nexport type ProjectBriefInput=z.input<typeof ProjectBrief>;
+export type ProjectBriefValue=z.infer<typeof ProjectBrief>;
+export type ProjectBriefInput=z.input<typeof ProjectBrief>;
 export type PlannedTask={id:string;department:string;agentRole:string;dependencies:string[];objective:string;reviewer?:string;risk:"low"|"medium"|"high"|"critical";system:string;produces:string[];requires:string[];};
 export type CompanyWorkPlan={projectId:string;departments:DepartmentPlan[];tasks:PlannedTask[]};
 const risk=(profile:ProjectProfile):PlannedTask["risk"]=>profile.capabilities.includes("security-critical")?"critical":profile.capabilities.includes("performance-critical")?"high":profile.complexity>=4?"high":"medium";
