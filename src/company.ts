@@ -51,6 +51,14 @@ const GatesMeta=z.object({
 });
 export type GatesDefinition=z.infer<typeof GatesMeta>;
 
+const LearningMeta=z.object({
+ minProjects:z.number().int().min(2),minConfidence:z.number().min(0).max(1),maxEvidence:z.number().int().min(1),
+ temporaryPatterns:z.array(z.string()),protectedTopics:z.array(z.string()),forbiddenIntents:z.array(z.string())
+});
+export type LearningPolicy=z.infer<typeof LearningMeta>;
+export async function loadLearningPolicy(root="company"):Promise<LearningPolicy>{
+ return LearningMeta.parse(parseMarkdownFrontmatter(await readFile(root+"/LEARNING.md","utf8")).meta);
+}
 export type OutputContract=z.infer<typeof ContractMeta>;
 export type MemoryRouting=z.infer<typeof MemoryMeta>;
 

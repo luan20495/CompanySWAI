@@ -27,7 +27,7 @@ export type AgentDefinition=z.infer<typeof AgentMeta>&z.infer<typeof RuleMeta>&{
 function scalar(raw:string):unknown{
  const value=raw.trim();
  if(value.startsWith("[")||value.startsWith("{"))return JSON.parse(value);
- if(/^\d+$/.test(value))return Number(value);
+ if(/^-?\d+(\.\d+)?$/.test(value))return Number(value);
  if(value==="true")return true;
  if(value==="false")return false;
  return value;

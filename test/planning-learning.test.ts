@@ -49,28 +49,56 @@ test("retrospective emits generic candidates for failures, capacity, cost drift 
  assert.equal(retro.paused,1);assert.equal(retro.failures,1);assert.equal(retro.revisions,2);assert.equal(retro.reviewRounds,2);
  const patterns=retro.candidates.map(c=>c.pattern);
  for(const expected of [PATTERNS.capacity,PATTERNS.estimates,PATTERNS.failures,PATTERNS.contract,PATTERNS.revisions("dev")])assert.ok(patterns.includes(expected),expected);
- assert.equal(retro.candidates.find(c=>c.pattern===PATTERNS.revisions("dev"))?.scope,"role:dev");
+ assert.equal(retro.candidates.find(c=>c.pattern===PATTERNS.revisions("dev"))?.scope,"ROLE:dev");
  assert.ok(retro.lessons.some(x=>x.includes("Capacity"))&&retro.lessons.some(x=>x.includes("25%")));
  assert.deepEqual(buildRetrospective("q",[]).candidates,[]);assert.deepEqual(buildRetrospective("q",[]).lessons,[PATTERNS.clean]);
 });
 
-test("learning loop end to end: two projects promote a lesson into later plans, project facts stay local",async()=>{
- const state=await tmpState(),exhausted=()=>createCapacitySelector([{id:"gone",provider:"x",model:"m",state:"OUT_OF_CREDIT",capabilities:["reasoning"],contextWindow:1000,maxConcurrency:1}],()=>{throw new Error("unreachable");});
+test("learning loop end to end: repeated revisions in two projects promote a role lesson into later plans; capacity pauses and project facts do not",async()=>{
+ const state=await tmpState();
+ const exhausted=()=>createCapacitySelector([{id:"gone",provider:"x",model:"m",state:"OUT_OF_CREDIT",capabilities:["reasoning"],contextWindow:1000,maxConcurrency:1}],()=>{throw new Error("unreachable");});
+ const reviewed=()=>selectorFor(request=>isReviewRequest(request)?usage(changes("not good enough")):usage(compliant("again")));
  for(const projectId of ["alpha-shop","beta-bank"]){
-  const summary=await new ProjectOrchestrator(exhausted(),state).run(plan(projectId,[task("a")]));
-  const {retrospective}=await closeProject(state,summary,{knownRoles:[]});
-  assert.ok(retrospective.candidates.some(c=>c.pattern===PATTERNS.capacity));
-  const md=await state.memory.read(projectId,"RETROSPECTIVE.md");assert.match(md,/## Cost: estimate vs actual/);assert.match(md,/Capacity pauses occurred/);assert.match(md,/Proposed company experience/);
+  const parked=await new ProjectOrchestrator(exhausted(),state).run(plan(projectId,[task("a")]));
+  const first=await closeProject(state,parked,{knownRoles:["builder"]});
+  assert.ok(first.retrospective.candidates.some(c=>c.pattern===PATTERNS.capacity&&c.kind==="operational"));
+  const rework=await new ProjectOrchestrator(reviewed(),state).run(plan(projectId,[task("b",{agentRole:"builder",review:reviewer({maxRounds:3})})]));
+  const {retrospective}=await closeProject(state,rework,{knownRoles:["builder"]});
+  assert.ok(retrospective.candidates.some(c=>c.scope==="ROLE:builder"&&c.kind==="process"));
+  const md=await state.memory.read(projectId,"RETROSPECTIVE.md");assert.match(md,/## Cost: estimate vs actual/);assert.match(md,/Proposed company experience/);
  }
- const experience=await state.experience.validatedLessons();assert.deepEqual(experience.map(x=>x.pattern),[PATTERNS.capacity]);
- const gamma=await compileBriefToProjectPlan({...brief,projectId:"gamma"},{projectLessons:["Gamma specific: the ledger export is slow",PATTERNS.clean],experience});
- for(const t of gamma.tasks){assert.ok(t.system.includes(PATTERNS.capacity));assert.ok(t.system.includes("ledger export"));assert.ok(!t.system.includes(PATTERNS.clean));}
+ const experience=await state.experience.validatedLessons();
+ assert.deepEqual(experience,[{pattern:PATTERNS.revisions("builder"),scope:"ROLE:builder"}],"only the process lesson is promoted, never the capacity pause");
+ assert.equal((await state.experience.list()).find(i=>i.pattern===PATTERNS.capacity)?.status,"REJECTED");
+ const gamma=await compileBriefToProjectPlan({...brief,projectId:"gamma"},{projectLessons:["Gamma specific: the ledger export is slow",PATTERNS.clean],experience:[...experience,{pattern:"BUILDER-ROLE-ONLY",scope:"ROLE:backend-engineer"}]});
+ for(const t of gamma.tasks){assert.ok(t.system.includes("ledger export"));assert.ok(!t.system.includes(PATTERNS.clean));assert.ok(!t.system.includes(PATTERNS.revisions("builder")),"a role lesson for a role this project lacks is not injected");}
+ assert.ok(gamma.tasks.find(t=>t.agentRole==="backend-engineer")!.system.includes("BUILDER-ROLE-ONLY"));
  const delta=await compileBriefToProjectPlan({...brief,projectId:"delta"},{experience});
  assert.ok(delta.tasks.every(t=>!t.system.includes("ledger export")),"another project never inherits project-local lessons");
 });
 
+test("skill and domain lessons are injected only into tasks that use that skill or domain",async()=>{
+ const secure={...brief,capabilities:["backend","security-critical"] as ("backend"|"security-critical")[],signals:["Marketplace"]};
+ const compiled=await compileBriefToProjectPlan(secure,{experience:[{pattern:"SKILL-SECURITY-LESSON",scope:"SKILL:security"},{pattern:"DOMAIN-MARKETPLACE-LESSON",scope:"DOMAIN:marketplace"},{pattern:"SKILL-FLUTTER-LESSON",scope:"SKILL:flutter"},{pattern:"DOMAIN-OTHER-LESSON",scope:"DOMAIN:healthcare"}]});
+ for(const t of compiled.tasks){
+  assert.equal(t.system.includes("SKILL-SECURITY-LESSON"),t.skills.includes("security"),t.agentRole);
+  assert.ok(t.system.includes("DOMAIN-MARKETPLACE-LESSON"));assert.ok(!t.system.includes("SKILL-FLUTTER-LESSON"));assert.ok(!t.system.includes("DOMAIN-OTHER-LESSON"));
+ }
+ assert.ok(compiled.tasks.some(t=>t.skills.includes("security")));
+});
+
+test("retrospectives attribute repeated revisions to the skills and domain a task used",()=>{
+ const base={projectId:"p",provider:"x",model:"m",startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),inputRefs:[],inputTokens:1,outputTokens:1};
+ const record=(over:Record<string,unknown>)=>ExecutionRecord.parse({...base,...over});
+ const records=[record({id:"1",taskId:"impl",agentRole:"dev",status:"SUCCEEDED",output:"x"}),record({id:"2",taskId:"impl--review-1-0",agentRole:"reviewer",status:"SUCCEEDED",output:"CHANGES_REQUIRED\n"}),record({id:"3",taskId:"impl--review-2-0",agentRole:"reviewer",status:"SUCCEEDED",output:"CHANGES_REQUIRED\n"})];
+ const retro=buildRetrospective("p",records,{taskSkills:{impl:["security","database"]},signals:["marketplace"]});
+ const scopes=retro.candidates.map(c=>c.scope).sort();
+ assert.deepEqual(scopes,["DOMAIN:marketplace","ROLE:dev","SKILL:database","SKILL:security"]);
+ assert.ok(retro.candidates.every(c=>c.kind==="process"));
+});
+
 test("role scoped lessons are injected only into that role's task",async()=>{
- const compiled=await compileBriefToProjectPlan(brief,{experience:[{pattern:"BACKEND-ONLY-LESSON",scope:"role:backend-engineer"}]});
+ const compiled=await compileBriefToProjectPlan(brief,{experience:[{pattern:"BACKEND-ONLY-LESSON",scope:"ROLE:backend-engineer"}]});
  for(const t of compiled.tasks)assert.equal(t.system.includes("BACKEND-ONLY-LESSON"),t.agentRole==="backend-engineer");
 });
 
@@ -80,7 +108,7 @@ test("revision-heavy review loops become a role scoped candidate through closePr
  const summary=await new ProjectOrchestrator(selector,state).run(plan("rev",[task("a",{agentRole:"builder",review:reviewer({maxRounds:3})})]));
  assert.deepEqual(summary.failed,["a"]);
  const {retrospective}=await closeProject(state,summary);
- assert.ok(retrospective.candidates.some(c=>c.scope==="role:builder"));assert.equal(retrospective.revisions,3);
+ assert.ok(retrospective.candidates.some(c=>c.scope==="ROLE:builder"));assert.equal(retrospective.revisions,3);
  assert.match(await state.memory.read("rev","RETROSPECTIVE.md"),/failed: a/);
 });
 

@@ -3,7 +3,7 @@ import {existsSync} from "node:fs";
 import {readFile,readdir} from "node:fs/promises";
 import {join} from "node:path";
 import {MarkdownAgentRegistry,activationMatches} from "./md-agent-loader.js";
-import {loadCompanyMarkdown} from "./company.js";
+import {loadCompanyMarkdown,loadLearningPolicy} from "./company.js";
 import {ProjectBrief} from "./work-planner.js";
 import {ProjectPlan} from "./project.js";
 import {compileBriefToProjectPlan} from "./plan-compiler.js";
@@ -72,6 +72,9 @@ for(const [mode,rules] of Object.entries(company.policy.modes)){
  for(const level of Object.values(rules.levelByRisk))check(Boolean(level&&company.policy.levels[level]),"mode "+mode+" uses undefined review level "+level);
  for(const gate of rules.requiredGates)check(Boolean(company.gates.codeGates[gate]),"mode "+mode+" requires undefined code gate "+gate);
 }
+
+const learning=await loadLearningPolicy();
+for(const pattern of [...learning.temporaryPatterns,...learning.protectedTopics,...learning.forbiddenIntents])try{new RegExp(pattern,"i");}catch{check(false,"company/LEARNING.md has an invalid pattern: "+pattern);}
 
 // 4. Examples and provider configuration parse and compile.
 const brief=ProjectBrief.parse(JSON.parse(await readFile("examples/project-brief.json","utf8")));

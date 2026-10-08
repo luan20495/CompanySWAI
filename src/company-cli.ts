@@ -7,6 +7,7 @@ import {ProjectOrchestrator} from "./orchestrator.js";
 import {loadRuntime} from "./runtime.js";
 import {closeProject} from "./closeout.js";
 import {MarkdownAgentRegistry} from "./md-agent-loader.js";
+import {SkillCatalog} from "./skill-selector.js";
 import {dryRunSelector} from "./providers/dry-run.js";
 import {CompanyState} from "./state.js";
 
@@ -31,8 +32,8 @@ const plan=raw&&typeof raw==="object"&&"tasks" in raw?ProjectPlan.parse(raw):awa
 const selector=dryRun?dryRunSelector():(await loadRuntime(runtimePath)).selector;
 const orchestrator=new ProjectOrchestrator(selector,state,waitArg?{approvalWait:{pollMs:2000,timeoutMs:waitSeconds*1000}}:{});
 const summary=await orchestrator.run(plan);
-const knownRoles=(await new MarkdownAgentRegistry().loadAll()).map(agent=>agent.id);
-const {retrospective,experience}=await closeProject(state,summary,{dryRun,knownRoles});
+const knownRoles=(await new MarkdownAgentRegistry().loadAll()).map(agent=>agent.id),knownSkills=(await new SkillCatalog().load()).map(skill=>skill.name);
+const {retrospective,experience}=await closeProject(state,summary,{dryRun,knownRoles,knownSkills,plan});
 
 console.log(JSON.stringify({summary,retrospective,validatedExperience:experience.filter(x=>x.status==="VALIDATED")},null,2));
 // Exit codes: 1 = a task failed, 2 = run is parked (capacity/approval/blocked dependents) and can be resumed, 0 = everything done.

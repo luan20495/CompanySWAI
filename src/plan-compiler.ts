@@ -5,11 +5,17 @@ import {PATTERNS} from "./retrospective.js";
 
 export type Learning={projectLessons?:string[];experience?:Array<{pattern:string;scope:string}>};
 const GENERIC_CLEAN=PATTERNS.clean;
-/** Lessons reach an agent only when they apply: this project's own lessons, company experience, and experience scoped to that role. */
-function learningFor(role:string,learning:Learning){
- const own=(learning.projectLessons??[]).filter(x=>x!==GENERIC_CLEAN);
- const shared=(learning.experience??[]).filter(x=>x.scope==="company"||x.scope==="role:"+role).map(x=>x.pattern);
- const lessons=[...own,...shared];
+/**
+ * Lessons reach an agent only when they apply: this project's own lessons, plus validated company experience whose scope
+ * matches — GLOBAL, ROLE:<this agent>, SKILL:<a skill it runs with>, DOMAIN:<a project signal tag>.
+ */
+function learningFor(role:string,skills:string[],domains:string[],learning:Learning){
+ const own=(learning.projectLessons??[]).filter(x=>x!==GENERIC_CLEAN),tags=domains.map(d=>d.toLowerCase());
+ const applies=(scope:string)=>{
+  const [kind,name]=scope.split(":");
+  return scope==="company"||kind==="GLOBAL"||((kind==="ROLE"||kind==="role")&&name===role)||(kind==="SKILL"&&skills.includes(name))||(kind==="DOMAIN"&&tags.includes(name.toLowerCase()));
+ };
+ const lessons=[...own,...(learning.experience??[]).filter(x=>applies(x.scope)).map(x=>x.pattern)];
  return lessons.length?"\n\n--- LESSONS FROM PRIOR WORK ---\n"+lessons.map(x=>"- "+x).join("\n"):"";
 }
 
@@ -35,12 +41,12 @@ export async function compileBriefToProjectPlan(input:ProjectBriefInput,learning
  return ProjectPlan.parse({
   projectId:work.projectId,mode:brief.mode,budget:brief.budget,research:brief.research,signals:work.signals,...(workspace?{workspace}:{}),
   tasks:work.tasks.map(task=>({
-   id:task.id,agentRole:task.agentRole,department:task.department,dependencies:task.dependencies,system:task.system+learningFor(task.agentRole,learning),prompt:task.objective,inputRefs:[],
+   id:task.id,agentRole:task.agentRole,department:task.department,dependencies:task.dependencies,system:task.system+learningFor(task.agentRole,task.skills,work.signals,learning),prompt:task.objective,inputRefs:[],
    capabilities:task.capabilities,produces:task.produces,contract:task.contract,risk:task.risk,skills:task.skills,requiredGates:task.requiredGates,priority:critical(task.id),
    ...quality,estimatedInputTokens:task.risk==="critical"?5000:3000,estimatedOutputTokens:task.risk==="critical"?5000:3000,maxTokens:task.risk==="critical"?6000:4096,
    ...(task.review?{review:{
-    role:task.review.role,department:task.review.department,system:task.review.system+learningFor(task.review.role,learning),capabilities:task.review.capabilities,contract:task.review.contract,
-    level:task.review.level,gates:task.review.gates,slots:task.review.slots.map(slot=>({...slot,system:slot.system+learningFor(task.review!.role,learning)})),
+    role:task.review.role,department:task.review.department,system:task.review.system+learningFor(task.review.role,task.review.skills,work.signals,learning),capabilities:task.review.capabilities,contract:task.review.contract,
+    level:task.review.level,gates:task.review.gates,slots:task.review.slots.map(slot=>({...slot,system:slot.system+learningFor(task.review!.role,task.review!.skills,work.signals,learning)})),
     ...quality,estimatedInputTokens:3000,estimatedOutputTokens:2000,maxTokens:3000,maxRounds:task.risk==="critical"?3:2
    }}:{})
   }))
