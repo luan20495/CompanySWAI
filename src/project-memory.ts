@@ -17,7 +17,8 @@ export class ProjectMemoryStore{
    this.writeIfMissing(plan.projectId,"ARCHITECTURE.md","# ARCHITECTURE\n\n"),
    this.writeIfMissing(plan.projectId,"DECISIONS.md","# DECISIONS\n\n"),
    this.writeIfMissing(plan.projectId,"HANDOFFS.md","# HANDOFFS\n\n"),
-   this.writeIfMissing(plan.projectId,"REVIEWS.md","# REVIEWS\n\n"),\n   this.writeIfMissing(plan.projectId,"BLOCKERS.md","# BLOCKERS\n\n"),
+   this.writeIfMissing(plan.projectId,"REVIEWS.md","# REVIEWS\n\n"),
+   this.writeIfMissing(plan.projectId,"BLOCKERS.md","# BLOCKERS\n\n"),
    this.writeIfMissing(plan.projectId,"QA.md","# QA\n\n"),
    this.writeIfMissing(plan.projectId,"STATUS.md","# STATUS\n\n")
   ]);
