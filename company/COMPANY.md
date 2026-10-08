@@ -11,3 +11,13 @@ CompanySWAI is an MD-driven software company. Markdown is the source of truth fo
 - Persist progress outside model context so work can resume safely.
 - Prefer compiler, test, linter, profiler and benchmark evidence over model opinion.
 - Never mark work done while a blocking dependency or required quality gate is unresolved.
+
+## Required output format
+Every maker output should contain, when applicable:
+- `## Deliverables`
+- `## Decisions`
+- `## Risks`
+- `## Evidence`
+- `## Handoff`
+
+Keep these sections concise so the runtime can persist decisions and handoffs into project Markdown memory.
