@@ -46,7 +46,7 @@ export function buildProjectStatus(projectId:string,events:TelemetryEvent[],reco
  const finished=runEvents.some(e=>e.type==="run.finished");
  let state:ProjectStatus["state"]=!lastRun?"IDLE":finished?"FINISHED":alive(lastRun.pid)?"RUNNING":"INTERRUPTED";
  const started=new Map<string,TelemetryEvent>(),done=new Set<string>(),failed=new Set<string>(),paused=new Set<string>();
- const blockers:string[]=[];let retries=0,failovers=0;const providers:Record<string,number>={};
+ const blockers:string[]=[],selected=new Map<string,TelemetryEvent>();let retries=0,failovers=0;const providers:Record<string,number>={};
  for(const e of runEvents){
   if(e.type==="task.started"&&e.taskId)started.set(e.taskId,e);
   if(e.type==="task.finished"&&e.taskId){started.delete(e.taskId);const outcome=e.detail??"";
@@ -54,13 +54,13 @@ export function buildProjectStatus(projectId:string,events:TelemetryEvent[],reco
   if(e.type==="task.blocked"&&e.detail)blockers.push((e.taskId??"")+": "+e.detail);
   if(e.type==="provider.retry")retries++;
   if(e.type==="provider.failover")failovers++;
-  if(e.type==="provider.selected"&&e.profileId)providers[e.profileId]=(providers[e.profileId]??0)+1;
+  if(e.type==="provider.selected"&&e.profileId){providers[e.profileId]=(providers[e.profileId]??0)+1;if(e.taskId)selected.set(e.taskId,e);}
  }
  const settled=records.filter(r=>r.status==="SUCCEEDED"||r.status==="CHECKPOINTED"||r.status==="FAILED");
  const usage={inputTokens:0,outputTokens:0,knownCost:0,subscriptionRuns:0,unknownCostRuns:0};
  const latest=new Map<string,ExecutionRecordValue>();for(const r of settled)if(r.inputTokens+r.outputTokens>0)latest.set(r.id,r);
  for(const r of latest.values()){usage.inputTokens+=r.inputTokens;usage.outputTokens+=r.outputTokens;if(r.billing==="subscription")usage.subscriptionRuns++;else if(r.actualCost!=null)usage.knownCost+=r.actualCost;else usage.unknownCostRuns++;}
- const running=state==="RUNNING"?[...started.values()].map(e=>({taskId:e.taskId!,agentRole:records.find(r=>r.taskId===e.taskId)?.agentRole??"",provider:e.provider,profileId:e.profileId,elapsedMs:now-Date.parse(e.ts)})):[];
+ const running=state==="RUNNING"?[...started.values()].map(e=>({taskId:e.taskId!,agentRole:records.find(r=>r.taskId===e.taskId)?.agentRole??"",provider:selected.get(e.taskId!)?.provider??e.provider,profileId:selected.get(e.taskId!)?.profileId??e.profileId,elapsedMs:now-Date.parse(e.ts)})):[];
  const all=options.planTasks??[],queued=state==="RUNNING"?all.filter(id=>!started.has(id)&&!done.has(id)&&!failed.has(id)&&!paused.has(id)):[];
  return {projectId,state,runId:lastRun?.runId,pid:lastRun?.pid,elapsedMs:lastRun?now-Date.parse(lastRun.ts):undefined,running,queued,completed:[...done],failed:[...failed],paused:[...paused],blockers,retries,failovers,providers,usage:{...usage,knownCost:Number(usage.knownCost.toFixed(6))}};
 }

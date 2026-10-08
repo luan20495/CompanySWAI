@@ -186,7 +186,7 @@ export class ProjectOrchestrator{
   const pending=this.unfinalized(await this.state.executions.list(plan.projectId),task.taskId);
   if(pending)return this.runner.finalize(task,pending);
   const tried:ProviderSelection[]=[],maxAttempts=this.options.maxProviderAttempts??DEFAULT_PROVIDER_ATTEMPTS,maxWait=this.options.maxCooldownWaitMs??DEFAULT_COOLDOWN_WAIT_MS;
-  let waitedMs=0;
+  let waitedMs=0,failures=0;
   for(;;){
    let selection:ProviderSelection;
    try{selection=this.selectProvider(this.requestFor(target,tried));}
@@ -201,6 +201,8 @@ export class ProjectOrchestrator{
      const ms=Math.max(1,error.retryAt-this.now());
      if(waitedMs+ms<=maxWait){waitedMs+=ms;this.metrics.capacityWaits++;this.emit(plan.projectId,"provider.waiting",{taskId:task.taskId,detail:"cooldown "+ms+"ms"});await this.slots.wait(ms+5);continue;}
     }
+    // Every profile we already tried may merely be cooling down: forget the exclusions once and let the selector say when.
+    if(error.reason==="NONE"&&tried.length){tried.length=0;continue;}
     await this.runner.pauseCapacity(task,error.message);this.emit(plan.projectId,"task.paused",{taskId:task.taskId,detail:error.message});return "PAUSED";
    }
    let admission;
@@ -217,7 +219,8 @@ export class ProjectOrchestrator{
    }
    const profileId=selection.profile.id??selection.profile.provider+"/"+selection.profile.model;
    const priced={...task,profileId,billing:selection.profile.billing??"metered",estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
-   this.emit(plan.projectId,"provider.selected",{taskId:task.taskId,profileId,provider:selection.provider.name,model:selection.provider.model});
+   this.emit(plan.projectId,"provider.selected",{taskId:task.taskId,profileId,provider:selection.provider.name,model:selection.provider.model,detail:selection.policy});
+   if(selection.qualityShortfall){this.emit(plan.projectId,"provider.quality-shortfall",{taskId:task.taskId,profileId,detail:"no profile met the requested quality tier; routed to the best available"});await this.state.memory.recordStatus(plan.projectId,task.taskId,"QUALITY_SHORTFALL","routed to "+profileId+" below the requested quality tier ("+(target.minQualityTier??"n/a")+")");}
    const began=this.now();
    try{
     const result=await this.capacity.use(profileId,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));
@@ -228,9 +231,9 @@ export class ProjectOrchestrator{
    }catch(error){
     this.metrics.providerRun(profileId,selection.profile.maxConcurrency,this.now()-began);
     if(!isProviderFailure(error)){this.selectProvider.release?.(selection);throw error;}
-    this.selectProvider.reportFailure?.(selection,error);tried.push(selection);counters.failovers++;this.metrics.failovers++;this.metrics.retries++;
+    this.selectProvider.reportFailure?.(selection,error);tried.push(selection);failures++;counters.failovers++;this.metrics.failovers++;this.metrics.retries++;
     this.emit(plan.projectId,"provider.failover",{taskId:task.taskId,profileId,detail:redactError(error)});
-    if(tried.length>=maxAttempts)throw new Error("Giving up after "+tried.length+" provider failures: "+redactError(error));
+    if(failures>=maxAttempts)throw new Error("Giving up after "+failures+" provider failures: "+redactError(error));
    }finally{this.inFlight.delete(admission.reservation);this.slots.notify();}
   }
  }

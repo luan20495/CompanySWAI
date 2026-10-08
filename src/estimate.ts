@@ -5,7 +5,7 @@ import type {ProjectPlanValue} from "./project.js";
 /** "subscription": billed by plan, no per-token price (cost is n/a, not $0). "unknown": metered but the profile has no prices. */
 export type CostBasis="metered"|"subscription"|"unknown";
 export type TaskEstimate={taskId:string;agentRole:string;provider?:string;model?:string;profileId?:string;tokens:number;cost?:number;costBasis:CostBasis;seconds?:number;confidence:"HIGH"|"MEDIUM"|"LOW";issues:string[]};
-function demand(task:ProjectPlanValue["tasks"][number]):TaskDemand{return {capabilities:task.capabilities,estimatedInputTokens:task.estimatedInputTokens,estimatedOutputTokens:task.estimatedOutputTokens,maxCost:task.maxCost,minContextWindow:task.minContextWindow};}
+function demand(task:ProjectPlanValue["tasks"][number]):TaskDemand{return {capabilities:task.capabilities,estimatedInputTokens:task.estimatedInputTokens,estimatedOutputTokens:task.estimatedOutputTokens,maxCost:task.maxCost,minContextWindow:task.minContextWindow,minQualityTier:task.minQualityTier};}
 function diagnose(profiles:CapacityProfile[],d:TaskDemand){
  const issues:string[]=[];if(!profiles.some(p=>p.state==="AVAILABLE"||p.state==="QUOTA_LOW"))issues.push("No provider profile is currently available.");
  if(!profiles.some(p=>d.capabilities.every(c=>p.capabilities.includes(c))))issues.push("No provider profile exposes all required capabilities: "+d.capabilities.join(", "));
@@ -16,7 +16,9 @@ function diagnose(profiles:CapacityProfile[],d:TaskDemand){
 }
 export function estimateProject(plan:ProjectPlanValue,profiles:CapacityProfile[]){
  const taskEstimates:TaskEstimate[]=plan.tasks.map(task=>{
-  const d=demand(task),selected=task.provider&&task.model?routeTask(profiles.filter(p=>p.provider===task.provider&&p.model===task.model),d):routeTask(profiles,d);
+  const d=demand(task),policy=task.routing??"BALANCED",pool=task.provider&&task.model?profiles.filter(p=>p.provider===task.provider&&p.model===task.model):profiles;
+  // Mirror the live selector: a quality tier nobody meets falls back to the best available.
+  const selected=routeTask(pool,d,Date.now(),{policy})??routeTask(pool,d,Date.now(),{policy,ignoreQualityFloor:true});
   if(!selected)return {taskId:task.id,agentRole:task.agentRole,tokens:d.estimatedInputTokens+d.estimatedOutputTokens,costBasis:"unknown",confidence:"LOW",issues:diagnose(profiles,d)};
   const cost=estimateCost(selected,d),seconds=selected.estimatedTokensPerSecond?(d.estimatedInputTokens+d.estimatedOutputTokens)/selected.estimatedTokensPerSecond:undefined;
   const costBasis:CostBasis=selected.billing==="subscription"?"subscription":cost!=null?"metered":"unknown",priced=costBasis!=="unknown";
