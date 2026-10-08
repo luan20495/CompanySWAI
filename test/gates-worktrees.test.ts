@@ -175,3 +175,14 @@ test("QA is shown the runtime's executed gate and test output for the work it ve
  assert.match(prompts.qa,/RUNTIME TEST EVIDENCE FOR impl[\s\S]*# tests 3[\s\S]*# pass 3/);assert.match(prompts.qa,/gate unit-tests: PASS/);
  assert.doesNotMatch(prompts.docs,/RUNTIME TEST EVIDENCE/);
 });
+
+test("a non-code task's incidental scaffold file is applied confined but not judged by project-wide checks; code tasks still are",async()=>{
+ const root=await repo(),state=await tmpState();
+ const workspace={path:root,checks:[fail],gates:{typecheck:[ok]},autoCommit:true};
+ const design=task("design",{deliversCode:false});
+ const summary=await new ProjectOrchestrator(selectorFor(()=>usage(block("package.json","{}"))),state).run(plan("g-nc",[design],{workspace}));
+ assert.deepEqual(summary.completed,["design"],"a design task writing package.json before any test exists must not hit the project's test check");
+ assert.equal(existsSync(join(root,"package.json")),true);
+ const code=await new ProjectOrchestrator(selectorFor(()=>usage(block("src/a.js","x"))),await tmpState()).run(plan("g-c",[task("impl",{deliversCode:true,requiredGates:["typecheck","project-checks"]})],{workspace}));
+ assert.deepEqual(code.failed,["impl"],"code deliverers remain subject to every required gate");
+});

@@ -21,6 +21,8 @@ export type RunTask={
  estimatedCost?:number;inputCostPerMillion?:number;outputCostPerMillion?:number;billing?:"metered"|"subscription";
  /** Code gates (typecheck, unit-tests, …) this task must pass when it delivers code. */
  requiredGates?:string[];
+ /** False for tasks that are not code deliverers (architecture, planning): their incidental files (a scaffold manifest) are applied confined, but are not judged by the project-wide checks, which only mean something once code and tests exist. */
+ deliversCode?:boolean;
  workspace?:{path:string;checks:CheckCommandSpec[];gates:Record<string,CheckCommandSpec[]>;setup:CheckCommandSpec[];autoCommit:boolean;isolation:"none"|"worktree"};
  handoffTo?:Array<{taskId:string;role:string}>;
 };
@@ -121,6 +123,7 @@ export class TaskRunner{
   const ws=task.workspace!,required=task.requiredGates??[];
   const commandsFor=(name:string)=>name==="project-checks"?(ws.checks.length?ws.checks:ws.gates["project-checks"]):ws.gates[name];
   const integration=ws.checks.length?[{name:"project-checks",commands:ws.checks}]:[];
+  if(task.deliversCode===false&&!required.length)return {gates:[],integration:[]};
   if(!required.length)return {gates:integration,integration};
   const missing=required.filter(name=>commandsFor(name)===undefined);
   if(missing.length)throw new WorkspaceError("Required code gate(s) not configured: "+missing.join(", ")+". Add them to workspace.gates (an empty list declares a gate not applicable).","GATE_NOT_CONFIGURED",missing.map(name=>"gate "+name+": NOT_CONFIGURED"),missing.map(name=>({name,status:"NOT_CONFIGURED" as const,detail:"not configured",checks:[]})));

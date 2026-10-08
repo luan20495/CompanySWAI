@@ -20,7 +20,7 @@ const okCheck=[{cmd:"node",args:["-e","process.exit(0)"]}],badCheck=[{cmd:"node"
 test("agent file blocks are applied transactionally, checked, committed and recorded; resume does not recommit",async()=>{
  const root=await repo(),state=await tmpState(),before=git(root,"rev-parse","HEAD");
  const selector=selectorFor(request=>usage(isReviewRequest(request)?pass():fileBlock("src/hello.ts","export const hello=1;")));
- const p=plan("ws",[task("impl",{review:reviewer()})],{workspace:{path:root,checks:okCheck,autoCommit:true}});
+ const p=plan("ws",[task("impl",{review:reviewer(),deliversCode:true})],{workspace:{path:root,checks:okCheck,autoCommit:true}});
  const summary=await new ProjectOrchestrator(selector,state).run(p);
  assert.deepEqual(summary.completed,["impl"]);
  const record=(await state.executions.list("ws")).find(r=>r.taskId==="impl"&&r.status==="SUCCEEDED")!;
@@ -36,7 +36,7 @@ test("agent file blocks are applied transactionally, checked, committed and reco
 test("a failing deterministic check rolls the repo back and records evidence on a FAILED execution",async()=>{
  const root=await repo(),state=await tmpState();
  const selector=selectorFor(()=>usage(fileBlock("README.md","agent rewrite")));
- const summary=await new ProjectOrchestrator(selector,state).run(plan("wf",[task("impl")],{workspace:{path:root,checks:badCheck,autoCommit:true}}));
+ const summary=await new ProjectOrchestrator(selector,state).run(plan("wf",[task("impl",{deliversCode:true})],{workspace:{path:root,checks:badCheck,autoCommit:true}}));
  assert.deepEqual(summary.failed,["impl"]);
  assert.equal(await readFile(join(root,"README.md"),"utf8"),"base\n");assert.equal(git(root,"status","--porcelain"),"");
  const failed=(await state.executions.list("wf")).find(r=>r.status==="FAILED")!;
