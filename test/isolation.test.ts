@@ -80,6 +80,14 @@ test("upstream context is bounded per dependency",async()=>{
  assert.ok(consumer.prompt.length<1500);assert.match(consumer.prompt,/truncated/);
 });
 
+test("an agent that verifies upstream work sees the whole artifact; other makers keep the tight upstream bound (regression: QA was BLOCKED by a clipped README)",async()=>{
+ const body="P".repeat(5000),verifier={...contract,params:{includeUpstreamEvidence:true}};
+ const {requests,selector}=recording(request=>compliant(request.prompt.startsWith("producer")?body+" END-OF-ARTIFACT":"ok"));
+ await new ProjectOrchestrator(selector,await tmpState(),{maxUpstreamChars:300,maxReviewArtifactChars:20000}).run(plan("iso6",[task("p",{contract,prompt:"producer work"}),task("v",{dependencies:["p"],contract:verifier,prompt:"verifier work"}),task("q",{dependencies:["p"],contract,prompt:"consumer work"})]));
+ assert.match(requests.find(r=>r.prompt.startsWith("verifier"))!.prompt,/END-OF-ARTIFACT/,"the verifier receives the artifact to its last character");
+ assert.doesNotMatch(requests.find(r=>r.prompt.startsWith("consumer"))!.prompt,/END-OF-ARTIFACT/,"an ordinary consumer stays bounded");
+});
+
 test("claude-code runs every execution in its own process and scratch directory",async()=>{
  const dir=await mkdtemp(join(tmpdir(),"companyswai-pid-")),script=join(dir,"claude");
  await writeFile(script,`#!/usr/bin/env node

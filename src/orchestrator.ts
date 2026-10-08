@@ -322,7 +322,7 @@ export class ProjectOrchestrator{
   * against the changed work. Gates and independent review then run exactly as for any maker output.
   */
  private async reworkRun(plan:ProjectPlanValue,task:TaskPlanValue,request:ReworkRequest,previous:ExecutionRecordValue,records:ExecutionRecordValue[],counters:Counters){
-  const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
+  const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS,this.options.maxReviewArtifactChars??DEFAULT_REVIEW_ARTIFACT_CHARS);
   const header="--- QA "+(request.kind==="fix"?"FINDINGS (rework round ":"RE-VERIFICATION (rework round ")+request.round+") ---\n"+request.findings.join("\n");
   const prompt=request.kind==="fix"
    ?built.prompt+"\n\n"+header+"\n\n--- YOUR CURRENT ARTIFACT ---\n"+previous.output+"\n\nFix what these findings require and keep everything else unchanged. Re-emit the complete artifact (every section; for code, every changed file in full)."
@@ -375,7 +375,7 @@ export class ProjectOrchestrator{
    }
    if(state.complete)return "DONE";
    if(!state.maker){
-    const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
+    const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS,this.options.maxReviewArtifactChars??DEFAULT_REVIEW_ARTIFACT_CHARS);
     const result=await this.executeMaker(plan,task,built.prompt,built.manifest,task.inputRefs,counters);
     if(typeof result==="string")return result;
     continue;
@@ -388,7 +388,7 @@ export class ProjectOrchestrator{
     counters.revisions++;
     if(state.disagreement){counters.disagreements++;this.emit(plan.projectId,"review.disagreement",{taskId:task.id,detail:"reviewers split; the revision reconciles every finding"});await this.state.memory.recordStatus(plan.projectId,task.id,"REVIEWER_DISAGREEMENT","reviewers split between PASS and CHANGES_REQUIRED; revising against all findings");}
     const findings=state.since.filter(r=>(parseReviewVerdict(r.output)??"CHANGES_REQUIRED")==="CHANGES_REQUIRED").map((r,i)=>"REVIEWER FINDINGS "+(i+1)+":\n"+r.output).join("\n\n");
-    const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
+    const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS,this.options.maxReviewArtifactChars??DEFAULT_REVIEW_ARTIFACT_CHARS);
     const prompt=built.prompt+"\n\n--- PREVIOUS OUTPUT ---\n"+state.maker.output+"\n\n--- REVIEW FEEDBACK ---\n"+findings+(state.disagreement?"\n\nThe reviewers disagreed. Address every CHANGES_REQUIRED finding; if you reject one, say why under ## Decisions.":"")+"\n\nRevise the work to address every required change.";
     const result=await this.executeMaker(plan,task,prompt,built.manifest,[...task.inputRefs,"execution:"+state.since.at(-1)!.taskId],counters);
     if(typeof result==="string")return result;

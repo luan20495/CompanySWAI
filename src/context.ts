@@ -38,11 +38,15 @@ const titlesOf=(parts:Array<{title:string}>)=>parts.map(p=>p.title).filter(Boole
 /** `evidence` is the runtime's own record of what was executed for that task (gate results and check output). */
 export type Upstream={task:TaskPlanValue;output:string;evidence?:string};
 
-export function makerContext(task:TaskPlanValue,upstream:Upstream[],limit:number):BuiltContext{
+/**
+ * `verifierLimit` is the cap for an agent whose job is to verify upstream work (it consumes test evidence): like a
+ * reviewer it must see the whole artifact, because a clipped README or test file would make it report BLOCKED for the wrong reason.
+ */
+export function makerContext(task:TaskPlanValue,upstream:Upstream[],limit:number,verifierLimit=limit):BuiltContext{
  if(!upstream.length)return {prompt:task.prompt,manifest:[]};
- const manifest:ContextEntry[]=[],blocks:string[]=[];
+ const manifest:ContextEntry[]=[],blocks:string[]=[],bodyLimit=task.contract.params.includeUpstreamEvidence===true?Math.max(limit,verifierLimit):limit;
  for(const dep of upstream){
-  const parts=sectionsExcept(dep.output,["Evidence"]),body=render(parts,limit);
+  const parts=sectionsExcept(dep.output,["Evidence"]),body=render(parts,bodyLimit);
   const extra=task.contract.params.includeUpstreamEvidence===true&&dep.evidence?"\n\n--- RUNTIME TEST EVIDENCE FOR "+dep.task.id+" (executed by the runtime, not by its author) ---\n"+clip(dep.evidence,limit):"";
   blocks.push("UPSTREAM "+dep.task.id+"\n"+body+extra);manifest.push({ref:"artifact:"+dep.task.id,sections:[...titlesOf(parts),...(extra?["runtime-evidence"]:[])],chars:body.length+extra.length});
  }

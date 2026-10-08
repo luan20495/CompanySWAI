@@ -48,6 +48,7 @@ test("the Node.js 18 criterion is verified by a real gate when a Node 18 runtime
  try{
   const [gate]=await new LocalRepoWorkspace(dir).runGates([{name:"unit-tests",commands:liveGates(node18).gates["unit-tests"]}]);
   assert.equal(gate.status,"PASS");assert.equal(gate.checks.length,2);
-  assert.match(gate.checks[1].output,/\[node18\]/,"the second check really ran the suite through node18");
+  assert.match(gate.checks[1].output,/\[node18 v\d+\.\d+\.\d+/,"the second check really ran the suite through node18 and prints the exact version it ran under");
+  assert.match(gate.checks[0].output,/\[node v\d+\.\d+\.\d+/,"the first check prints the current runtime version");
  }finally{process.env.PATH=old;}
 });
