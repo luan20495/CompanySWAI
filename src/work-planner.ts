@@ -2,14 +2,13 @@ import {z} from "zod";
 import {composeCompany,loadCompanyMarkdown,type ProjectProfile,type DepartmentPlan} from "./company.js";
 import {MarkdownAgentRegistry,systemPromptFor,type AgentDefinition} from "./md-agent-loader.js";
 import {SafeId} from "./ids.js";
+import {BudgetPolicySchema,CheckCommand} from "./project.js";
 
-const Budget=z.object({maxProjectCost:z.number().nonnegative().optional(),maxTaskCost:z.number().nonnegative().optional(),maxTeamCost:z.record(z.string(),z.number().nonnegative()).default({}),maxAgentCost:z.record(z.string(),z.number().nonnegative()).default({}),approvalThreshold:z.number().nonnegative().optional()}).default({maxTeamCost:{},maxAgentCost:{}});
-const CheckCommand=z.object({cmd:z.string().regex(/^[A-Za-z0-9._-]+$/),args:z.array(z.string()).default([])});
 export const ProjectBrief=z.object({
  projectId:SafeId,objective:z.string().min(10),
  capabilities:z.array(z.enum(["backend","web-ui","mobile","deployment","security-critical","performance-critical"])).min(1),
  complexity:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4),z.literal(5)]),mobileSkills:z.array(z.string()).optional(),
- budget:Budget,workspacePath:z.string().min(1).optional(),checks:z.array(CheckCommand).default([]),autoCommit:z.boolean().default(false)
+ budget:BudgetPolicySchema,workspacePath:z.string().min(1).optional(),checks:z.array(CheckCommand).default([]),autoCommit:z.boolean().default(false)
 });
 export type ProjectBriefValue=z.infer<typeof ProjectBrief>;
 export type ProjectBriefInput=z.input<typeof ProjectBrief>;

@@ -1,26 +1,66 @@
+import type {z} from "zod";
 import type {ExecutionRecordValue} from "./execution-record.js";
+import type {BudgetPolicyObject} from "./project.js";
 import {BudgetExceededError} from "./errors.js";
 
-export type BudgetPolicy={
- maxProjectCost?:number;maxTaskCost?:number;maxTeamCost?:Record<string,number>;maxAgentCost?:Record<string,number>;approvalThreshold?:number;
-};
+export type BudgetPolicy=Partial<z.input<typeof BudgetPolicyObject>>;
 export type BudgetContext={taskId:string;department:string;agentRole:string};
+/** Cost reserved by a model call that has been admitted but has not produced a record yet. */
+export type InFlightCost=BudgetContext&{estimatedCost:number};
 
 export class ApprovalRequiredError extends Error{
  readonly code="APPROVAL_REQUIRED";
  constructor(readonly estimatedCost:number){super("Approval required for estimated task cost "+estimatedCost.toFixed(6));this.name="ApprovalRequiredError";}
 }
-const successful=(records:ExecutionRecordValue[])=>records.filter(record=>record.status==="SUCCEEDED");
-const sum=(records:ExecutionRecordValue[])=>records.reduce((total,record)=>total+(record.actualCost??0),0);
-export function spentCost(records:ExecutionRecordValue[],taskId?:string){
- const rows=successful(records);return sum(taskId?rows.filter(r=>r.taskId===taskId||r.taskId.startsWith(taskId+"--review-")):rows);
+
+/** Review executions are accounted to the task they review. */
+export const baseTaskId=(taskId:string)=>taskId.replace(/--review-\d+$/,"");
+/** Money is spent once a model call returned: SUCCEEDED records, plus CHECKPOINTED ones that never reached a terminal record. */
+export function settledRecords(records:ExecutionRecordValue[]){
+ const terminal=new Set(records.filter(r=>r.status==="SUCCEEDED"||r.status==="FAILED").map(r=>r.id));
+ return records.filter(r=>r.status==="SUCCEEDED"||(r.status==="CHECKPOINTED"&&!terminal.has(r.id)));
 }
-export function assertBudget(policy:BudgetPolicy,records:ExecutionRecordValue[],context:BudgetContext,estimatedCost?:number,approved=false){
- if(estimatedCost==null)return;
- const rows=successful(records),projectSpent=sum(rows),taskSpent=sum(rows.filter(r=>r.taskId===context.taskId||r.taskId.startsWith(context.taskId+"--review-"))),teamSpent=sum(rows.filter(r=>r.department===context.department)),agentSpent=sum(rows.filter(r=>r.agentRole===context.agentRole));
+const sum=(rows:ExecutionRecordValue[])=>rows.reduce((total,record)=>total+(record.actualCost??0),0);
+export function spentCost(records:ExecutionRecordValue[],taskId?:string){
+ const rows=settledRecords(records);return sum(taskId?rows.filter(r=>baseTaskId(r.taskId)===taskId):rows);
+}
+const hasLimits=(policy:BudgetPolicy)=>policy.maxProjectCost!=null||policy.maxTaskCost!=null||policy.approvalThreshold!=null||Object.keys(policy.maxTeamCost??{}).length>0||Object.keys(policy.maxAgentCost??{}).length>0;
+
+export function assertBudget(policy:BudgetPolicy,records:ExecutionRecordValue[],context:BudgetContext,estimatedCost?:number,approved=false,inFlight:InFlightCost[]=[]){
+ if(estimatedCost==null){
+  if(hasLimits(policy))throw new BudgetExceededError("Cost of the selected provider profile is unknown while budget limits are configured; set inputCostPerMillion/outputCostPerMillion on the profile");
+  return;
+ }
+ const rows=settledRecords(records),reserved=(pick:(item:InFlightCost)=>boolean)=>inFlight.filter(pick).reduce((total,item)=>total+item.estimatedCost,0);
+ const projectSpent=sum(rows)+reserved(()=>true);
+ const taskSpent=sum(rows.filter(r=>baseTaskId(r.taskId)===baseTaskId(context.taskId)))+reserved(item=>baseTaskId(item.taskId)===baseTaskId(context.taskId));
+ const teamSpent=sum(rows.filter(r=>r.department===context.department))+reserved(item=>item.department===context.department);
+ const agentSpent=sum(rows.filter(r=>r.agentRole===context.agentRole))+reserved(item=>item.agentRole===context.agentRole);
  if(policy.maxProjectCost!=null&&projectSpent+estimatedCost>policy.maxProjectCost)throw new BudgetExceededError("Project budget exceeded");
  if(policy.maxTaskCost!=null&&taskSpent+estimatedCost>policy.maxTaskCost)throw new BudgetExceededError("Task budget exceeded: "+context.taskId);
  const teamLimit=policy.maxTeamCost?.[context.department];if(teamLimit!=null&&teamSpent+estimatedCost>teamLimit)throw new BudgetExceededError("Team budget exceeded: "+context.department);
  const agentLimit=policy.maxAgentCost?.[context.agentRole];if(agentLimit!=null&&agentSpent+estimatedCost>agentLimit)throw new BudgetExceededError("Agent budget exceeded: "+context.agentRole);
  if(!approved&&policy.approvalThreshold!=null&&estimatedCost>policy.approvalThreshold)throw new ApprovalRequiredError(estimatedCost);
+}
+
+export type BudgetLine={limit?:number;estimated:number;actual:number;runs:number;utilization?:number};
+export type BudgetReport={project:BudgetLine;departments:Record<string,BudgetLine>;tasks:Record<string,BudgetLine>;agents:Record<string,BudgetLine>};
+const line=(rows:ExecutionRecordValue[],limit?:number):BudgetLine=>{
+ const estimated=rows.reduce((t,r)=>t+(r.estimatedCost??0),0),actual=sum(rows);
+ return {limit,estimated,actual,runs:rows.length,...(limit?{utilization:actual/limit}:{})};
+};
+const group=(rows:ExecutionRecordValue[],by:(r:ExecutionRecordValue)=>string,limits:Record<string,number>={})=>{
+ const out:Record<string,BudgetLine>={},keys=[...new Set(rows.map(by))].sort();
+ for(const key of keys)out[key]=line(rows.filter(r=>by(r)===key),limits[key]);
+ return out;
+};
+/** Estimate versus actual spend at project, department, task and agent level, next to the configured limits. */
+export function budgetReport(policy:BudgetPolicy,records:ExecutionRecordValue[]):BudgetReport{
+ const rows=settledRecords(records);
+ return {
+  project:line(rows,policy.maxProjectCost),
+  departments:group(rows,r=>r.department,policy.maxTeamCost),
+  tasks:group(rows,r=>baseTaskId(r.taskId),{}),
+  agents:group(rows,r=>r.agentRole,policy.maxAgentCost)
+ };
 }

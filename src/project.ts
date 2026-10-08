@@ -32,14 +32,15 @@ const TaskPlan=Selection.and(z.object({
  review:ReviewPlan.optional()
 }));
 
-const CheckCommand=z.object({cmd:z.string().regex(/^[A-Za-z0-9._-]+$/),args:z.array(z.string()).default([])});
-export const BudgetPolicySchema=z.object({
+export const CheckCommand=z.object({cmd:z.string().regex(/^[A-Za-z0-9._-]+$/),args:z.array(z.string()).default([]),timeoutMs:z.number().int().positive().optional()});
+export const BudgetPolicyObject=z.object({
  maxProjectCost:z.number().nonnegative().optional(),
  maxTaskCost:z.number().nonnegative().optional(),
  maxTeamCost:z.record(z.string(),z.number().nonnegative()).default({}),
  maxAgentCost:z.record(z.string(),z.number().nonnegative()).default({}),
  approvalThreshold:z.number().nonnegative().optional()
-}).default({maxTeamCost:{},maxAgentCost:{}});
+});
+export const BudgetPolicySchema=BudgetPolicyObject.default({maxTeamCost:{},maxAgentCost:{}});
 
 export const ProjectPlan=z.object({
  projectId:SafeId,
