@@ -1,6 +1,6 @@
 import {appendFile,mkdir,readFile,writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import type {ProjectPlanValue} from "./project.js";
+import {ProjectPlan,type ProjectPlanInput} from "./project.js";
 import {SafeId} from "./ids.js";
 
 const safe=(value:string)=>SafeId.parse(value);
@@ -8,7 +8,8 @@ export class ProjectMemoryStore{
  constructor(private root=".companyswai/projects"){}
  private dir(projectId:string){return join(this.root,safe(projectId));}
  private path(projectId:string,name:string){return join(this.dir(projectId),name);}
- async init(plan:ProjectPlanValue){
+ async init(input:ProjectPlanInput){
+  const plan=ProjectPlan.parse(input);
   const dir=this.dir(plan.projectId);await mkdir(dir,{recursive:true});
   const planMd=["# PLAN","","Project: `"+plan.projectId+"`","","## Tasks",...plan.tasks.map(t=>"- [ ] **"+t.id+"** — "+t.agentRole+(t.dependencies.length?" — depends on: "+t.dependencies.join(", "):"")),""].join("\n");
   await Promise.all([
