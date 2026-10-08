@@ -1,35 +1,49 @@
 # CompanySWAI
 
-CompanySWAI is a lightweight, local, **MD-driven AI software company**. Markdown defines the company, 11 core agents, their rules, skills, dependencies and quality gates. TypeScript is the small execution engine.
+CompanySWAI is a lightweight local **MD-driven AI software company**. Markdown defines the company, 11 core agents, rules, skills, dependencies and quality gates; TypeScript is the execution engine.
 
-## Why MD-first
-- Human-readable in GitHub and local editors.
-- Easy to version, review and change without modifying runtime code.
-- Loads only the active agents and only the skills each agent needs.
-- Keeps role prompts out of TypeScript.
-- Makes dependencies explicit through produced/required artifacts.
-- No web UI is required to operate or inspect the company.
+## Core model
+- `company/*.md`: company principles, workflow and quality gates.
+- `agents/<agent>/IDENTITY.md`: role, activation and skills.
+- `agents/<agent>/RULES.md`: required/produced artifacts, reviewer and DONE rules.
+- `skills/*.md`: reusable context loaded only when referenced.
+- `.companyswai/projects/<project>/`: readable project memory: PLAN, REQUIREMENTS, ARCHITECTURE, DECISIONS, HANDOFFS, REVIEWS, QA and STATUS.
 
-## Source of truth
-- `company/COMPANY.md` — global operating principles.
-- `company/WORKFLOW.md` — company flow.
-- `company/QUALITY-GATES.md` — universal quality gates.
-- `agents/<agent>/IDENTITY.md` — identity, activation and relevant skills.
-- `agents/<agent>/RULES.md` — dependencies, outputs, reviewer and DONE rules.
-- `skills/*.md` — reusable skills loaded only when referenced.
+The 11 core agents are Product Lead, Business Analyst, Researcher, Tech Lead, Backend Engineer, Frontend Engineer, Mobile Engineer, UX/UI Designer, Independent Reviewer, QA Engineer and DevOps/SRE. Only relevant agents are activated.
 
-The 11 core agents are Product Lead, Business Analyst, Researcher, Tech Lead, Backend Engineer, Frontend Engineer, Mobile Engineer, UX/UI Designer, Independent Reviewer, QA Engineer and DevOps/SRE.
+## Runtime
+The runtime parses/validates Markdown, resolves artifact dependencies, routes providers, enforces budget/approval/concurrency, persists checkpoints, resumes completed work safely, performs review/revision, records artifacts/decisions/handoffs, can apply confined ```file` patches to an explicitly configured local workspace, run deterministic checks, optionally commit successful changes, and reuse retrospective lessons on later runs.
 
-## Runtime responsibilities
-The TypeScript core parses/validates Markdown, activates agents by project capability/complexity, resolves artifact dependencies, builds executable plans, routes providers, controls budget/approval/concurrency, handles failover/checkpointing, runs independent review and stores execution/retrospective evidence.
-
-## Run
+## Verify
 ```bash
 npm install
 npm run check
+```
+
+## Deterministic end-to-end demo
+No API key is required:
+```bash
+npm run company -- examples/project-brief.json --dry-run
+```
+
+## Live run
+Create `config/providers.json` from the example, set credentials in environment variables, then:
+```bash
 npm run company -- examples/project-brief.json --runtime config/providers.json
 ```
 
-See `docs/MD-ARCHITECTURE.md` for the contract.
+## Optional real code workspace
+Add these fields to a project brief:
+```json
+{
+  "workspacePath": "/absolute/path/to/your/local/repo",
+  "checks": [
+    {"cmd": "npm", "args": ["test"]},
+    {"cmd": "npm", "args": ["run", "typecheck"]}
+  ],
+  "autoCommit": false
+}
+```
+The model may emit ```file relative/path` blocks. Paths are confined to `workspacePath`; configured checks must pass before the task is accepted. Set `autoCommit` only when you explicitly want CompanySWAI to commit successful task changes.
 
-Provider credentials must never be committed.
+See `docs/MD-ARCHITECTURE.md`. Provider credentials must never be committed.
