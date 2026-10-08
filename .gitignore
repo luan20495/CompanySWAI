@@ -1,0 +1,6 @@
+node_modules/
+.companyswai/
+.env
+.env.local
+config/providers.json
+*.log
