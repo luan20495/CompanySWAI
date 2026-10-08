@@ -1,4 +1,4 @@
-import {ProjectPlan,type ProjectPlanValue} from "./project.js";
+import {ProjectPlan,type ProjectPlanValue,type ProjectPlanInput} from "./project.js";
 import type {ProviderSelector,ProviderSelection} from "./provider-selector.js";
 import {CapacityUnavailableError} from "./errors.js";
 import {assertBudget,ApprovalRequiredError} from "./budget.js";
@@ -47,7 +47,7 @@ export class ProjectOrchestrator{
    try{const result=await this.capacity.use(selection.profile.provider+"/"+selection.profile.model,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));this.selectProvider.reportSuccess?.(selection,{inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCost:result.actualCost});return result;}catch(error){if(!this.isCapacityFailure(error))throw error;this.selectProvider.reportFailure?.(selection,error);tried.push(selection);}
   }
  }
- async run(input:ProjectPlanValue):Promise<ProjectRunSummary>{
+ async run(input:ProjectPlanInput):Promise<ProjectRunSummary>{
   const plan=ProjectPlan.parse(input);this.validateGraph(plan);await this.memory.init(plan);
   const completed=new Set<string>(),paused=new Set<string>(),approvalRequired=new Set<string>(),skipped=new Set<string>(),pending=new Map(plan.tasks.map(t=>[t.id,t]));
   const initialRecords=await this.executions.list(plan.projectId);
