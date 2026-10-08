@@ -10,11 +10,11 @@ export const ProjectBrief=z.object({
  complexity:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4),z.literal(5)]),mobileSkills:z.array(z.string()).optional(),
  workspacePath:z.string().min(1).optional(),checks:z.array(CheckCommand).default([]),autoCommit:z.boolean().default(false)
 });
-export type ProjectBriefValue=z.infer<typeof ProjectBrief>;
+export type ProjectBriefValue=z.infer<typeof ProjectBrief>;\nexport type ProjectBriefInput=z.input<typeof ProjectBrief>;
 export type PlannedTask={id:string;department:string;agentRole:string;dependencies:string[];objective:string;reviewer?:string;risk:"low"|"medium"|"high"|"critical";system:string;produces:string[];requires:string[];};
 export type CompanyWorkPlan={projectId:string;departments:DepartmentPlan[];tasks:PlannedTask[]};
 const risk=(profile:ProjectProfile):PlannedTask["risk"]=>profile.capabilities.includes("security-critical")?"critical":profile.capabilities.includes("performance-critical")?"high":profile.complexity>=4?"high":"medium";
-export async function planCompanyWork(input:ProjectBriefValue,registry=new MarkdownAgentRegistry()):Promise<CompanyWorkPlan>{
+export async function planCompanyWork(input:ProjectBriefInput,registry=new MarkdownAgentRegistry()):Promise<CompanyWorkPlan>{
  const brief=ProjectBrief.parse(input),profile:ProjectProfile={capabilities:brief.capabilities,complexity:brief.complexity,mobileSkills:brief.mobileSkills};
  const [departments,globalMd]=await Promise.all([composeCompany(profile,registry),loadCompanyMarkdown()]);const agents=departments.flatMap(d=>d.agents.map(a=>a.definition)),makers=agents.filter(a=>a.mode==="maker").sort((a,b)=>a.stage-b.stage||a.id.localeCompare(b.id)),producers=new Map<string,AgentDefinition[]>();
  for(const agent of makers)for(const artifact of agent.produces){const list=producers.get(artifact)??[];list.push(agent);producers.set(artifact,list);}
