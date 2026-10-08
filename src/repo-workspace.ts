@@ -97,7 +97,7 @@ export class LocalRepoWorkspace{
     const failure=error as {code?:number|string;stdout?:string;stderr?:string;killed?:boolean;message:string};
     const result={cmd:command.cmd,args:command.args,exitCode:typeof failure.code==="number"?failure.code:-1,durationMs:Date.now()-started,output:tail((failure.stdout??"")+(failure.stderr??"")||failure.message)};
     results.push(result);
-    throw new WorkspaceError("Deterministic check failed: "+describeCheck(result)+(failure.killed?" (timed out)":""),"CHECK_FAILED",results.map(describeCheck));
+    throw new WorkspaceError("Deterministic check failed: "+describeCheck(result)+(failure.killed?" (timed out)":""),"CHECK_FAILED",[...results.map(describeCheck),"output of the failing check:\n"+result.output.slice(-1500)]);
    }
   }
   return results;

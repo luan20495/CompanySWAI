@@ -16,7 +16,7 @@ function recording(handler:(request:ModelRequest)=>string){
  return {requests,selector:selectorFor(request=>{requests.push(request);return usage(handler(request));})};
 }
 
-test("a reviewer never receives the maker's system prompt, reasoning or handoff chatter — only requirements, artifact, upstream context and evidence",async()=>{
+test("a reviewer never receives the maker's system prompt or reasoning — only requirements, the complete artifact, upstream context and evidence",async()=>{
  const maker=compliant("the delivered widget",{decisions:"Chose option B.",handoff:"HANDOFF-CHATTER"});
  const withReasoning="I first considered option A at length. SECRET-REASONING-TRACE\n\n"+maker+"\n\n## Scratch\nPRIVATE-SCRATCH-NOTES";
  const {requests,selector}=recording(request=>isReviewRequest(request)?pass("reviewed"):withReasoning);
@@ -28,8 +28,8 @@ test("a reviewer never receives the maker's system prompt, reasoning or handoff 
  assert.match(review.prompt,/ARTIFACT UNDER REVIEW[\s\S]*the delivered widget/);
  assert.match(review.prompt,/Chose option B/,"decisions are relevant to review");
  assert.match(review.prompt,/UPSTREAM a/,"the context the author was given is shared");
- assert.match(review.prompt,/TEST EVIDENCE[\s\S]*checked/);
- for(const leaked of ["SECRET-REASONING-TRACE","PRIVATE-SCRATCH-NOTES","HANDOFF-CHATTER","MAKER-SYSTEM-PROMPT","MAKER-B-SYSTEM"])assert.ok(!review.prompt.includes(leaked)&&!review.system.includes(leaked),leaked);
+ assert.match(review.prompt,/ARTIFACT UNDER REVIEW[\s\S]*## Evidence\nchecked[\s\S]*## Handoff\nHANDOFF-CHATTER/,"Evidence and Handoff are sections of the artifact and are reviewed with it");
+ for(const leaked of ["SECRET-REASONING-TRACE","PRIVATE-SCRATCH-NOTES","MAKER-SYSTEM-PROMPT","MAKER-B-SYSTEM"])assert.ok(!review.prompt.includes(leaked)&&!review.system.includes(leaked),leaked);
 });
 
 test("unrelated agents' context is excluded and only declared upstream artifacts are passed downstream",async()=>{
@@ -50,7 +50,17 @@ test("review executions record exactly what they were given (artifact, upstream,
  const state=await tmpState();
  await new ProjectOrchestrator(selector,state).run(plan("iso3",[task("a",{contract}),task("b",{contract}),task("c",{dependencies:["a"],contract,review:reviewer()})]));
  const review=(await state.executions.list("iso3")).find(r=>r.taskId.startsWith("c--review-")&&r.status==="SUCCEEDED")!;
- assert.deepEqual(review.contextRefs,["artifact:c[Deliverables,Decisions,Blockers]","upstream:a[Deliverables,Decisions]","evidence:c[Evidence]"]);
+ assert.deepEqual(review.contextRefs,["artifact:c[Deliverables,Decisions,Evidence,Blockers,Handoff]","upstream:a[Deliverables,Decisions]","evidence:c[gates]"]);
+});
+
+test("a reviewer sees the whole artifact, not a truncated one (regression: live reviewers rejected plans whose Evidence/Handoff were cut off)",async()=>{
+ const long="Detailed plan paragraph. ".repeat(1800);
+ const {requests,selector}=recording(request=>isReviewRequest(request)?pass():"## Deliverables\n"+long+"\n\n## Decisions\nNone.\n\n## Evidence\nshort evidence\n\n## Blockers\nNone.\n\n## Handoff\nFINAL-HANDOFF-MARKER");
+ await new ProjectOrchestrator(selector,await tmpState()).run(plan("iso6",[task("a",{contract,review:reviewer()})]));
+ const review=requests.find(isReviewRequest)!;
+ assert.ok(review.prompt.length>40_000,"a 45k-character artifact reaches the reviewer");
+ assert.match(review.prompt,/## Evidence[\s\S]*## Blockers[\s\S]*## Handoff\nFINAL-HANDOFF-MARKER/,"every contract section is present, in order, untruncated");
+ assert.doesNotMatch(review.prompt,/truncated/);
 });
 
 test("every model call is a fresh request: only system, prompt and token limit reach the provider",async()=>{

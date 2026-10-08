@@ -26,6 +26,8 @@ export type OrchestratorOptions={
  approvalWait?:{pollMs:number;timeoutMs:number};
  /** Upper bound for the upstream context handed to a task, per dependency. */
  maxUpstreamChars?:number;
+ /** Upper bound for the artifact a reviewer sees (they must see all of it). */
+ maxReviewArtifactChars?:number;
  sleep?:(ms:number)=>Promise<void>;
  /** Tasks running at the same time within this project (backpressure); further ready tasks queue. */
  maxParallelTasks?:number;
@@ -38,6 +40,8 @@ export type OrchestratorOptions={
  now?:()=>number;
  /** Extra model attempts after an isolated task conflicted with already-integrated work. */
  maxConflictRetries?:number;
+ /** Extra model attempts after generated code failed its deterministic gates (the failure output is fed back). */
+ maxGateRepairs?:number;
  /** Research connector kinds available to plans (default: static corpus and http-json). */
  connectors?:ConnectorRegistry;
 };
@@ -65,7 +69,7 @@ class Signal{
   });
  }
 }
-const DEFAULT_UPSTREAM_CHARS=8000,DEFAULT_PARALLEL=4,DEFAULT_COOLDOWN_WAIT_MS=120_000,DEFAULT_AGING_MS=20_000,DEFAULT_PROVIDER_ATTEMPTS=8;
+const DEFAULT_UPSTREAM_CHARS=30_000,DEFAULT_REVIEW_ARTIFACT_CHARS=80_000,DEFAULT_PARALLEL=4,DEFAULT_COOLDOWN_WAIT_MS=120_000,DEFAULT_AGING_MS=20_000,DEFAULT_PROVIDER_ATTEMPTS=8;
 
 /** Highest effective priority first: static priority (critical-path weight) plus aging; ties by id for determinism. */
 export function pickNext<T extends {id:string;priority:number}>(candidates:T[],readyAt:Map<string,number>,now:number,agingMs:number):T|undefined{
@@ -273,14 +277,27 @@ export class ProjectOrchestrator{
   * against the new state of the repository (its first answer is kept in the log; nothing was merged).
   */
  private async executeMaker(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs:string[],counters:Counters){
-  let attemptPrompt=prompt;
-  for(let conflicts=0;;conflicts++){
+  let attemptPrompt=prompt,conflicts=0,repairs=0;
+  for(;;){
    try{return await this.execute(plan,task,await this.makerRun(plan,task,attemptPrompt,manifest,inputRefs),task.id,counters);}
    catch(error){
-    if(!(error instanceof WorkspaceError)||error.code!=="GIT_CONFLICT"||conflicts>=(this.options.maxConflictRetries??1))throw error;
-    this.emit(plan.projectId,"integration.conflict",{taskId:task.id,detail:error.evidence.join("; ")});
-    await this.state.memory.recordStatus(plan.projectId,task.id,"INTEGRATION_CONFLICT",error.evidence.join("; "));
-    attemptPrompt=prompt+"\n\n--- INTEGRATION CONFLICT ---\nYour previous change could not be merged because other tasks changed the same code ("+error.evidence.join("; ")+"). Their work is now in the repository. Produce your change again against the current repository state, keeping their changes.";
+    if(!(error instanceof WorkspaceError))throw error;
+    if(error.code==="GIT_CONFLICT"&&conflicts<(this.options.maxConflictRetries??1)){
+     conflicts++;
+     this.emit(plan.projectId,"integration.conflict",{taskId:task.id,detail:error.evidence.join("; ")});
+     await this.state.memory.recordStatus(plan.projectId,task.id,"INTEGRATION_CONFLICT",error.evidence.join("; "));
+     attemptPrompt=prompt+"\n\n--- INTEGRATION CONFLICT ---\nYour previous change could not be merged because other tasks changed the same code ("+error.evidence.join("; ")+"). Their work is now in the repository. Produce your change again against the current repository state, keeping their changes.";
+     continue;
+    }
+    if((error.code==="CHECK_FAILED"||error.code==="INTEGRATION_FAILED")&&repairs<(this.options.maxGateRepairs??2)){
+     repairs++;this.metrics.retries++;
+     const previous=(await this.state.executions.list(plan.projectId)).filter(r=>r.taskId===task.id&&r.status==="FAILED"&&r.output).at(-1)?.output??"";
+     this.emit(plan.projectId,"gate.repair",{taskId:task.id,detail:error.message});
+     await this.state.memory.recordStatus(plan.projectId,task.id,"GATE_REPAIR","attempt "+repairs+": "+error.message.slice(0,300));
+     attemptPrompt=prompt+"\n\n--- YOUR PREVIOUS ATTEMPT FAILED ITS DETERMINISTIC GATES ---\n"+error.evidence.join("\n")+"\n\n--- YOUR PREVIOUS ATTEMPT ---\n"+previous.slice(0,12000)+"\n\nFix the cause of the failure and emit the complete corrected files. Do not weaken or skip any check.";
+     continue;
+    }
+    throw error;
    }
   }
  }
@@ -315,7 +332,7 @@ export class ProjectOrchestrator{
    const upstream=this.upstreamOf(plan,task,records),version=state.makerVersions;
    const runs=state.missingSlots.map(slot=>async()=>{
     const config=this.slotConfig(task,slot),previous=records.filter(r=>r.taskId.startsWith(task.id+"--review-")&&(r.slot??0)===slot&&r.status==="SUCCEEDED").at(-1)?.output;
-    const built=reviewContext({task,maker:state.maker!,upstream,limit:this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS,slot,slots,previousFindings:previous});
+    const built=reviewContext({task,maker:state.maker!,upstream,limit:this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS,artifactLimit:this.options.maxReviewArtifactChars??DEFAULT_REVIEW_ARTIFACT_CHARS,slot,slots,previousFindings:previous});
     const run:RunTask={projectId:plan.projectId,taskId:this.reviewTaskId(task,version,slot),agentRole:review.role,department:review.department,kind:"review",reviewedTaskId:task.id,slot,inputRefs:[...task.inputRefs,"execution:"+task.id],system:config.system,prompt:built.prompt,maxTokens:review.maxTokens,contract:config.contract,contextRefs:this.refs(built.manifest)};
     return this.execute(plan,review,run,task.id,counters);
    });

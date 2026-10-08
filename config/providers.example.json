@@ -15,7 +15,8 @@
         "review"
       ],
       "contextWindow": 200000,
-      "maxConcurrency": 1
+      "maxConcurrency": 1,
+      "qualityTier": 4
     },
     {
       "id": "anthropic-primary",

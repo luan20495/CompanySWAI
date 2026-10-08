@@ -39,12 +39,16 @@ export function makerContext(task:TaskPlanValue,upstream:Upstream[],limit:number
 
 export type ReviewContextInput={
  task:TaskPlanValue;maker:ExecutionRecordValue;upstream:Upstream[];limit:number;
+ /** Cap for the artifact under review itself; reviewers must see all of it, so this is much larger than the upstream cap. */
+ artifactLimit?:number;
  slot:number;slots:number;previousFindings?:string;
 };
 export function reviewContext(input:ReviewContextInput):BuiltContext{
  const {task,maker,upstream,limit,slot,slots}=input,manifest:ContextEntry[]=[];
- const artifactTitles=task.contract.sections.filter(title=>!["Evidence","Handoff"].includes(title));
- const artifact=render(pickSections(maker.output,artifactTitles),limit);
+ // The reviewer sees the whole artifact — every section of the contract the maker had to satisfy (Evidence and Handoff
+ // included, because reviewing them is part of review). Only text outside those sections (reasoning, scratch) is withheld.
+ const artifactTitles=task.contract.sections;
+ const artifact=render(pickSections(maker.output,artifactTitles),input.artifactLimit??limit);
  manifest.push({ref:"artifact:"+task.id,sections:artifactTitles,chars:artifact.length});
  const parts:string[]=[REVIEW_REQUEST_PREFIX+" The first non-empty line MUST be PASS or CHANGES_REQUIRED."];
  if(slots>1)parts.push("You are independent reviewer "+(slot+1)+" of "+slots+". You cannot see the other reviewers or the author's reasoning.");
@@ -58,9 +62,10 @@ export function reviewContext(input:ReviewContextInput):BuiltContext{
  }
  parts.push("--- ARTIFACT UNDER REVIEW ---\n"+artifact);
  if(maker.changedFiles.length)parts.push("--- CHANGED FILES ---\n"+maker.changedFiles.join("\n")+(maker.commitSha?"\ncommit "+maker.commitSha:""));
- const evidence=[section(maker.output,"Evidence"),...maker.evidence,...maker.gates.map(g=>"gate "+g.name+": "+g.status+(g.detail?" — "+g.detail:""))].filter(Boolean).join("\n");
- parts.push("--- TEST EVIDENCE ---\n"+(evidence?clip(evidence,limit):"(none supplied)"));
- manifest.push({ref:"evidence:"+task.id,sections:["Evidence"],chars:evidence.length});
+ // Deterministic evidence produced by the runtime (gates, checks). The author's own ## Evidence section is part of the artifact above.
+ const evidence=[...maker.evidence,...maker.gates.map(g=>"gate "+g.name+": "+g.status+(g.detail?" — "+g.detail:""))].join("\n");
+ parts.push("--- DETERMINISTIC TEST EVIDENCE (from the runtime) ---\n"+(evidence?clip(evidence,limit):"(none: no code gates ran for this step; the author's ## Evidence section is in the artifact)"));
+ manifest.push({ref:"evidence:"+task.id,sections:["gates"],chars:evidence.length});
  if(input.previousFindings)parts.push("--- YOUR PREVIOUS FINDINGS (verify each is resolved) ---\n"+clip(input.previousFindings,limit));
  return {prompt:parts.join("\n\n"),manifest};
 }

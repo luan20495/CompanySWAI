@@ -140,3 +140,25 @@ test("stale worktrees are found and cleaned up, active ones are kept",async()=>{
  const again=await manager.create("p","stale-task");const second=await manager.create("p","stale-task");assert.equal(again.path,second.path,"a leftover worktree is replaced on re-creation");
  await manager.remove("p","stale-task");
 });
+
+test("a failed gate feeds its output back to the maker, which repairs the code within the allowed attempts",async()=>{
+ const root=await repo(),state=await tmpState(),prompts:string[]=[];
+ const checkNoBug=node("const t=require('fs').readFileSync('src/a.ts','utf8');if(t.includes('BUG')){console.error('type error: BUG at src/a.ts:1');process.exit(1)}");
+ const selector=selectorFor(request=>{prompts.push(request.prompt);return usage(block("src/a.ts",/FAILED ITS DETERMINISTIC GATES/.test(request.prompt)?"export const a:number=1;":"export const a:string=BUG;"));});
+ const workspace={path:root,checks:[],gates:{typecheck:[checkNoBug]},autoCommit:true};
+ const summary=await new ProjectOrchestrator(selector,state).run(plan("rp1",[task("impl",{requiredGates:["typecheck"]})],{workspace}));
+ assert.deepEqual(summary.completed,["impl"]);assert.equal(prompts.length,2);
+ assert.match(prompts[1],/type error: BUG at src\/a\.ts:1/,"the failing check's own output reaches the model");assert.match(prompts[1],/YOUR PREVIOUS ATTEMPT[\s\S]*BUG/);
+ assert.equal(await readFile(join(root,"src/a.ts"),"utf8"),"export const a:number=1;\n");
+ const records=(await state.executions.list("rp1")).filter(r=>r.taskId==="impl");
+ assert.deepEqual(records.filter(r=>r.status==="FAILED"||r.status==="SUCCEEDED").map(r=>r.status),["FAILED","SUCCEEDED"]);
+ assert.match(await state.memory.read("rp1","STATUS.md"),/GATE_REPAIR/);assert.ok(summary.metrics.retries>=1);
+});
+
+test("gate repair is bounded: code that never passes ends as a recorded failure",async()=>{
+ const root=await repo(),state=await tmpState();let calls=0;
+ const selector=selectorFor(()=>{calls++;return usage(block("src/a.ts","still broken"));});
+ const workspace={path:root,checks:[],gates:{typecheck:[fail]},autoCommit:true};
+ const summary=await new ProjectOrchestrator(selector,state,{maxGateRepairs:2}).run(plan("rp2",[task("impl",{requiredGates:["typecheck"]})],{workspace}));
+ assert.deepEqual(summary.failed,["impl"]);assert.equal(calls,3,"original attempt + two repairs");assert.equal(existsSync(join(root,"src/a.ts")),false);assert.equal(git(root,"status","--porcelain"),"");
+});
