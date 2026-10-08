@@ -45,13 +45,13 @@ export class ProjectOrchestrator{
   let waves=0,reviewRuns=0,revisions=0,failovers=0;
   while(pending.size){const ready=[...pending.values()].filter(t=>t.dependencies.every(dep=>completed.has(dep)));if(!ready.length)break;waves++;
    await Promise.all(ready.map(async task=>{const basePrompt=await this.buildPrompt(plan,task.id),before=(await this.executions.list(plan.projectId)).filter(r=>r.taskId===task.id&&r.status==="FAILED").length;
-    const maker=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:task.inputRefs,system:task.system,prompt:basePrompt,maxTokens:task.maxTokens});
+    const maker=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:task.inputRefs,system:task.system,prompt:basePrompt,maxTokens:task.maxTokens,workspace:plan.workspace});
     const after=(await this.executions.list(plan.projectId)).filter(r=>r.taskId===task.id&&r.status==="FAILED").length;failovers+=Math.max(0,after-before);
     if(maker==="APPROVAL_REQUIRED"){approvalRequired.add(task.id);return;}if(!maker){paused.add(task.id);return;}if(!task.review){completed.add(task.id);return;}
     for(let round=1;round<=task.review.maxRounds;round++){const output=await this.latestOutput(plan.projectId,task.id),reviewTaskId=task.id+"--review-"+round;
-     const review=await this.execute(plan,task.review,{projectId:plan.projectId,taskId:reviewTaskId,agentRole:task.review.role,inputRefs:[...task.inputRefs,"execution:"+task.id],system:task.review.system,prompt:"Review the output below. The first non-empty line MUST be PASS or CHANGES_REQUIRED.\n\n"+output,maxTokens:task.review.maxTokens});
+     const review=await this.execute(plan,task.review,{projectId:plan.projectId,taskId:reviewTaskId,agentRole:task.review.role,inputRefs:[...task.inputRefs,"execution:"+task.id],system:task.review.system,prompt:"Review the output below. The first non-empty line MUST be PASS or CHANGES_REQUIRED.\n\n"+output,maxTokens:task.review.maxTokens,workspace:undefined});
      if(review==="APPROVAL_REQUIRED"){approvalRequired.add(task.id);return;}if(!review){paused.add(task.id);return;}reviewRuns++;if(this.verdict(review.output)==="PASS"){completed.add(task.id);return;}if(round===task.review.maxRounds)throw new Error("Review failed after max rounds for "+task.id);revisions++;
-     const revised=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:[...task.inputRefs,"execution:"+reviewTaskId],system:task.system,prompt:basePrompt+"\n\n--- PREVIOUS OUTPUT ---\n"+output+"\n\n--- REVIEW FEEDBACK ---\n"+review.output+"\n\nRevise the work to address every required change.",maxTokens:task.maxTokens});
+     const revised=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:[...task.inputRefs,"execution:"+reviewTaskId],system:task.system,prompt:basePrompt+"\n\n--- PREVIOUS OUTPUT ---\n"+output+"\n\n--- REVIEW FEEDBACK ---\n"+review.output+"\n\nRevise the work to address every required change.",maxTokens:task.maxTokens,workspace:plan.workspace});
      if(revised==="APPROVAL_REQUIRED"){approvalRequired.add(task.id);return;}if(!revised){paused.add(task.id);return;}
     }
    }));for(const task of ready)pending.delete(task.id);

@@ -21,3 +21,12 @@ Every maker output should contain, when applicable:
 - `## Handoff`
 
 Keep these sections concise so the runtime can persist decisions and handoffs into project Markdown memory.
+
+## Code changes
+When implementation requires creating or replacing a source file and a project workspace is configured, emit an exact file block:
+
+\`\`\`file relative/path/to/file.ext
+<complete file content>
+\`\`\`
+
+Never use absolute paths or parent traversal. The runtime applies patches only inside the configured workspace and may run deterministic checks before accepting them.
