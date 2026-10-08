@@ -30,3 +30,24 @@ test("the live benchmark's gates are real: they pass a working project and fail 
  await assert.rejects(()=>run({"src/index.js":good["src/index.js"]}),/unit-tests/);
  await assert.rejects(()=>run({...good,"test/add.test.js":good["test/add.test.js"].replace("3","4")}),/unit-tests/);
 });
+
+test("the Node.js 18 criterion is verified by a real gate when a Node 18 runtime exists, and otherwise stated as BLOCKED policy",async()=>{
+ const {findNode18,liveGates,nodeSupportPolicy}=await import("../src/benchmark.js");
+ const node18=findNode18();
+ assert.match(nodeSupportPolicy(node18),node18?/executes the whole test suite under both runtimes/:/must be classified BLOCKED/);
+ assert.match(nodeSupportPolicy(undefined),/BLOCKED by QA, never PASS/);
+ assert.equal(liveGates(undefined).gates["unit-tests"].length,1);assert.equal(liveGates("/x/node18").gates["unit-tests"].length,2);
+ if(!node18)return;
+ // run the gate for real on a tiny project under both runtimes via a node18 shim on PATH
+ const {LocalRepoWorkspace}=await import("../src/repo-workspace.js");
+ const {mkdtemp,writeFile,mkdir,symlink}=await import("node:fs/promises");const {tmpdir}=await import("node:os");const {join,delimiter}=await import("node:path");
+ const bin=await mkdtemp(join(tmpdir(),"companyswai-n18test-"));await symlink(node18,join(bin,"node18"));
+ const dir=await mkdtemp(join(tmpdir(),"companyswai-n18proj-"));await mkdir(join(dir,"test"));await writeFile(join(dir,"package.json"),'{"type":"module"}');
+ await writeFile(join(dir,"test","a.test.js"),"import test from 'node:test';import assert from 'node:assert/strict';test('v',()=>assert.ok(process.version.length>0));\n");
+ const old=process.env.PATH;process.env.PATH=bin+delimiter+old;
+ try{
+  const [gate]=await new LocalRepoWorkspace(dir).runGates([{name:"unit-tests",commands:liveGates(node18).gates["unit-tests"]}]);
+  assert.equal(gate.status,"PASS");assert.equal(gate.checks.length,2);
+  assert.match(gate.checks[1].output,/\[node18\]/,"the second check really ran the suite through node18");
+ }finally{process.env.PATH=old;}
+});

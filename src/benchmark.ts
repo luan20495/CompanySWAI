@@ -1,7 +1,8 @@
 import {execFileSync} from "node:child_process";
+import {existsSync,readdirSync,symlinkSync} from "node:fs";
 import {mkdtemp,mkdir,readFile,writeFile} from "node:fs/promises";
-import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {homedir,tmpdir} from "node:os";
+import {delimiter,join} from "node:path";
 import {runAutonomous} from "./autonomous.js";
 import {createCapacitySelector,type ProviderSelector} from "./provider-selector.js";
 import {DryRunProvider} from "./providers/dry-run.js";
@@ -41,10 +42,33 @@ const pass=ok("process.exit(0)");
  * one test and pass. Reviewers get genuine executed evidence instead of a no-op command. (Dry-run uses no-op gates because
  * the deterministic provider writes no code.)
  */
-export function liveGates(){
- const tests=ok("const {spawnSync}=require('child_process');const env={...process.env};delete env.NODE_TEST_CONTEXT;const r=spawnSync(process.execPath,['--test'],{encoding:'utf8',env});process.stdout.write((r.stdout||'').slice(-1500));process.stderr.write((r.stderr||'').slice(-500));if(r.status!==0||!/# tests [1-9]/.test(r.stdout||''))process.exit(1)");
+/** A Node.js 18 binary, if this machine has one (NODE18_BIN, an nvm install, or `node18` on PATH). */
+export function findNode18():string|undefined{
+ const candidates=[process.env.NODE18_BIN,...(()=>{try{const base=join(homedir(),".nvm","versions","node");return readdirSync(base).filter(v=>/^v18\./.test(v)).sort().reverse().map(v=>join(base,v,"bin","node"));}catch{return [];}})()];
+ for(const candidate of candidates)if(candidate&&existsSync(candidate)){
+  try{if(/^v18\./.test(execFileSync(candidate,["--version"],{encoding:"utf8"}).trim()))return candidate;}catch{/* not runnable */}
+ }
+ return undefined;
+}
+
+export function liveGates(node18?:string){
+ // argv[1] names the runtime to test with (default: the current one), so the same script checks Node 18 when available.
+ const script="const {spawnSync}=require('child_process');const env={...process.env};delete env.NODE_TEST_CONTEXT;const r=spawnSync(process.argv[1]||process.execPath,['--test'],{encoding:'utf8',env});process.stdout.write('['+(process.argv[1]||'node')+'] '+(r.stdout||'').slice(-1200));process.stderr.write((r.stderr||'').slice(-500));if(r.status!==0||!/# tests [1-9]/.test(r.stdout||''))process.exit(1)";
+ const tests=ok(script),tests18={cmd:"node",args:["-e",script,"node18"]};
  const syntax=ok("const fs=require('fs'),cp=require('child_process');const walk=d=>fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.name.startsWith('.')||e.name==='node_modules'?[]:e.isDirectory()?walk(d+'/'+e.name):[d+'/'+e.name]);const files=walk('.').filter(f=>/\\.(js|mjs)$/.test(f));if(!files.length){console.error('no JavaScript files were delivered');process.exit(1)}for(const f of files){const r=cp.spawnSync(process.execPath,['--check',f],{encoding:'utf8'});if(r.status!==0){console.error(f+': '+r.stderr);process.exit(1)}}");
- return {checks:[tests],gates:{typecheck:[syntax],"unit-tests":[tests],"integration-tests":[],lint:[],build:[],security:[]}};
+ const unit=node18?[tests,tests18]:[tests];
+ return {checks:[tests],gates:{typecheck:[syntax],"unit-tests":unit,"integration-tests":[],lint:[],build:[],security:[]}};
+}
+
+/**
+ * Acceptance policy for the Node.js 18 criterion, stated in the brief the agents receive: when a Node 18 runtime exists the
+ * project's own gate runs the tests on it and the criterion is verified for real; when none exists the criterion cannot be
+ * verified here, so QA must classify it BLOCKED (never PASS, and not an implementation FAIL).
+ */
+export function nodeSupportPolicy(node18?:string){
+ return node18
+  ?"\n\nCompatibility: the library must run on Node.js 18 and on the current Node.js release. The project's unit-test gate executes the whole test suite under both runtimes, so Node 18 compatibility is verified by executed evidence."
+  :"\n\nCompatibility: the library should run on Node.js 18 and the current release, but no Node.js 18 runtime is available in this environment. Executed evidence exists only for the current Node.js; any criterion that needs Node.js 18 must be classified BLOCKED by QA, never PASS.";
 }
 
 async function benchmarkRepo(files:Record<string,string>={}){
@@ -60,7 +84,10 @@ export async function runBenchmark(options:BenchmarkOptions={}):Promise<Benchmar
  const started=Date.now(),live=options.live,failures:string[]=[];
  const brief=JSON.parse(await readFile(options.briefPath??(live?"benchmarks/library-brief.json":"benchmarks/commerce-brief.json"),"utf8")) as ProjectBriefInput;
  const repo=await benchmarkRepo(live?{"package.json":JSON.stringify({name:"benchmark-project",private:true,type:"module"},null,2)+"\n"}:{}),state=new CompanyState(options.stateDir??await mkdtemp(join(tmpdir(),"companyswai-benchmark-state-")));
- const real=live?liveGates():undefined;
+ const node18=live?findNode18():undefined;
+ if(node18){const bin=await mkdtemp(join(tmpdir(),"companyswai-node18-"));symlinkSync(node18,join(bin,"node18"));process.env.PATH=bin+delimiter+process.env.PATH;}
+ if(live)brief.objective=String(brief.objective)+nodeSupportPolicy(node18);
+ const real=live?liveGates(node18):undefined;
  const withWorkspace={...brief,workspacePath:repo.root,isolation:"worktree" as const,autoCommit:true,checks:real?.checks??[pass],setup:[],
   gates:real?.gates??{typecheck:[pass],"unit-tests":[pass],"integration-tests":[pass],lint:[pass],build:[pass],security:[pass]}};
  const roles=(await new MarkdownAgentRegistry().loadAll()).map(a=>a.id),skills=(await new SkillCatalog().load()).map(s=>s.name);
