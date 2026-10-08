@@ -1,5 +1,4 @@
 import {z} from "zod";
-import {readFile} from "node:fs/promises";
 import {SafeId} from "./ids.js";
 
 const Selection=z.object({
@@ -54,4 +53,3 @@ export const ProjectPlan=z.object({
 });
 export type ProjectPlanValue=z.infer<typeof ProjectPlan>;
 export type ProjectPlanInput=z.input<typeof ProjectPlan>;
-export async function loadProjectPlan(path:string){return ProjectPlan.parse(JSON.parse(await readFile(path,"utf8")));}

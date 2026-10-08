@@ -1,5 +1,5 @@
 import {lstat,mkdir,readFile,realpath,rm,stat,writeFile} from "node:fs/promises";
-import {dirname,isAbsolute,relative,resolve,sep} from "node:path";
+import {dirname,isAbsolute,relative,resolve} from "node:path";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {containsSecret,redact,sanitizedEnv} from "./secrets.js";

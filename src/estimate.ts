@@ -1,5 +1,5 @@
 import type {CapacityProfile,TaskDemand} from "./capacity.js";
-import {eligible,estimateCost,routeTask} from "./capacity.js";
+import {estimateCost,routeTask} from "./capacity.js";
 import type {ProjectPlanValue} from "./project.js";
 
 export type TaskEstimate={taskId:string;agentRole:string;provider?:string;model?:string;profileId?:string;tokens:number;cost?:number;seconds?:number;confidence:"HIGH"|"MEDIUM"|"LOW";issues:string[]};

@@ -25,9 +25,6 @@ export function settledRecords(records:ExecutionRecordValue[]){
  return [...latest.values()];
 }
 const sum=(rows:ExecutionRecordValue[])=>rows.reduce((total,record)=>total+(record.actualCost??0),0);
-export function spentCost(records:ExecutionRecordValue[],taskId?:string){
- const rows=settledRecords(records);return sum(taskId?rows.filter(r=>baseTaskId(r.taskId)===taskId):rows);
-}
 const hasLimits=(policy:BudgetPolicy)=>policy.maxProjectCost!=null||policy.maxTaskCost!=null||policy.approvalThreshold!=null||Object.keys(policy.maxTeamCost??{}).length>0||Object.keys(policy.maxAgentCost??{}).length>0;
 
 export function assertBudget(policy:BudgetPolicy,records:ExecutionRecordValue[],context:BudgetContext,estimatedCost?:number,approved=false,inFlight:InFlightCost[]=[]){
