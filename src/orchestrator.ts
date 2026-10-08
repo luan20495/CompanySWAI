@@ -42,7 +42,7 @@ export class ProjectOrchestrator{
    let selection:ProviderSelection;
    try{selection=this.selectProvider(this.requestFor(target,tried));}catch(error){if(error instanceof CapacityUnavailableError){await this.runner.pauseCapacity(task,error.message);return undefined;}throw error;}
    const records=await this.executions.list(plan.projectId),approved=selection.estimatedCost==null?false:await this.approvals.covers(plan.projectId,approvalKey,selection.estimatedCost);
-   try{assertBudget(plan.budget,records,approvalKey,selection.estimatedCost,approved);}catch(error){if(error instanceof ApprovalRequiredError){await this.approvals.request(plan.projectId,approvalKey,error.estimatedCost);await this.memory.recordStatus(plan.projectId,approvalKey,"APPROVAL_REQUIRED",error.message);return "APPROVAL_REQUIRED" as const;}throw error;}
+   try{assertBudget(plan.budget,records,{taskId:approvalKey,department:task.department,agentRole:task.agentRole},selection.estimatedCost,approved);}catch(error){if(error instanceof ApprovalRequiredError){await this.approvals.request(plan.projectId,approvalKey,error.estimatedCost);await this.memory.recordStatus(plan.projectId,approvalKey,"APPROVAL_REQUIRED",error.message);return "APPROVAL_REQUIRED" as const;}throw error;}
    const priced={...task,estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
    try{const result=await this.capacity.use(selection.profile.provider+"/"+selection.profile.model,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));this.selectProvider.reportSuccess?.(selection,{inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCost:result.actualCost});return result;}catch(error){if(!this.isCapacityFailure(error))throw error;this.selectProvider.reportFailure?.(selection,error);tried.push(selection);}
   }
@@ -59,7 +59,7 @@ export class ProjectOrchestrator{
     const basePrompt=await this.buildPrompt(plan,task.id);let records=await this.executions.list(plan.projectId),state=this.history(records,task),maker=state.maker?.record;
     if(!maker){
      const before=records.filter(r=>r.taskId===task.id&&r.status==="FAILED").length;
-     const result=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:task.inputRefs,system:task.system,prompt:basePrompt,maxTokens:task.maxTokens,workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)},task.id);
+     const result=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,inputRefs:task.inputRefs,system:task.system,prompt:basePrompt,maxTokens:task.maxTokens,workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)},task.id);
      const after=(await this.executions.list(plan.projectId)).filter(r=>r.taskId===task.id&&r.status==="FAILED").length;failovers+=Math.max(0,after-before);
      if(result==="APPROVAL_REQUIRED"){approvalRequired.add(task.id);return;}if(!result){paused.add(task.id);return;}maker=result;
     }
@@ -67,17 +67,17 @@ export class ProjectOrchestrator{
     records=await this.executions.list(plan.projectId);state=this.history(records,task);
     if(state.needsRevision&&state.lastReview){
      if(state.reviewCount>=task.review.maxRounds)throw new Error("Review failed after max rounds for "+task.id);
-     revisions++;const revised=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:[...task.inputRefs,"execution:"+state.lastReview.record.taskId],system:task.system,prompt:basePrompt+"\n\n--- PREVIOUS OUTPUT ---\n"+maker.output+"\n\n--- REVIEW FEEDBACK ---\n"+state.lastReview.record.output+"\n\nRevise the work to address every required change.",maxTokens:task.maxTokens,workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)},task.id);
+     revisions++;const revised=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,inputRefs:[...task.inputRefs,"execution:"+state.lastReview.record.taskId],system:task.system,prompt:basePrompt+"\n\n--- PREVIOUS OUTPUT ---\n"+maker.output+"\n\n--- REVIEW FEEDBACK ---\n"+state.lastReview.record.output+"\n\nRevise the work to address every required change.",maxTokens:task.maxTokens,workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)},task.id);
      if(revised==="APPROVAL_REQUIRED"){approvalRequired.add(task.id);return;}if(!revised){paused.add(task.id);return;}maker=revised;
     }
     records=await this.executions.list(plan.projectId);state=this.history(records,task);
     for(let round=state.reviewCount+1;round<=task.review.maxRounds;round++){
      const output=await this.latestOutput(plan.projectId,task.id),reviewTaskId=task.id+"--review-"+round;
-     const review=await this.execute(plan,task.review,{projectId:plan.projectId,taskId:reviewTaskId,agentRole:task.review.role,inputRefs:[...task.inputRefs,"execution:"+task.id],system:task.review.system,prompt:"Review the output below. The first non-empty line MUST be PASS or CHANGES_REQUIRED.\n\n"+output,maxTokens:task.review.maxTokens},task.id);
+     const review=await this.execute(plan,task.review,{projectId:plan.projectId,taskId:reviewTaskId,agentRole:task.review.role,department:task.review.department,inputRefs:[...task.inputRefs,"execution:"+task.id],system:task.review.system,prompt:"Review the output below. The first non-empty line MUST be PASS or CHANGES_REQUIRED.\n\n"+output,maxTokens:task.review.maxTokens},task.id);
      if(review==="APPROVAL_REQUIRED"){approvalRequired.add(task.id);return;}if(!review){paused.add(task.id);return;}reviewRuns++;
      if(this.verdict(review.output)==="PASS"){completed.add(task.id);return;}
      if(round===task.review.maxRounds)throw new Error("Review failed after max rounds for "+task.id);
-     revisions++;const revised=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,inputRefs:[...task.inputRefs,"execution:"+reviewTaskId],system:task.system,prompt:basePrompt+"\n\n--- PREVIOUS OUTPUT ---\n"+output+"\n\n--- REVIEW FEEDBACK ---\n"+review.output+"\n\nRevise the work to address every required change.",maxTokens:task.maxTokens,workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)},task.id);
+     revisions++;const revised=await this.execute(plan,task,{projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,inputRefs:[...task.inputRefs,"execution:"+reviewTaskId],system:task.system,prompt:basePrompt+"\n\n--- PREVIOUS OUTPUT ---\n"+output+"\n\n--- REVIEW FEEDBACK ---\n"+review.output+"\n\nRevise the work to address every required change.",maxTokens:task.maxTokens,workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)},task.id);
      if(revised==="APPROVAL_REQUIRED"){approvalRequired.add(task.id);return;}if(!revised){paused.add(task.id);return;}
     }
    }));
