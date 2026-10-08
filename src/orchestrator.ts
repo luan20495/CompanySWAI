@@ -9,7 +9,9 @@ import {TaskRunner,type RunTask} from "./runner.js";
 import {CompanyState} from "./state.js";
 import {parseReviewVerdict} from "./output-parser.js";
 import {makerContext,reviewContext,type ContextEntry,type Upstream} from "./context.js";
-import {LocalRepoWorkspace} from "./repo-workspace.js";
+import {LocalRepoWorkspace,WorkspaceError} from "./repo-workspace.js";
+import {WorktreeManager} from "./worktrees.js";
+import {join} from "node:path";
 import {redactError} from "./secrets.js";
 import {RunMetrics,type MetricsSnapshot,type TaskOutcome} from "./metrics.js";
 import type {ExecutionRecordValue} from "./execution-record.js";
@@ -33,6 +35,8 @@ export type OrchestratorOptions={
  /** Provider failures tolerated for one model step before the task fails. */
  maxProviderAttempts?:number;
  now?:()=>number;
+ /** Extra model attempts after an isolated task conflicted with already-integrated work. */
+ maxConflictRetries?:number;
 };
 type SelectionFields={provider?:string;model?:string;capabilities:string[];estimatedInputTokens:number;estimatedOutputTokens:number;maxCost?:number;minContextWindow?:number;routing?:string;minQualityTier?:number};
 type Pause="PAUSED"|"APPROVAL_REQUIRED";
@@ -148,7 +152,7 @@ export class ProjectOrchestrator{
   return contract.validators?.includes("qa-traceability")?{requirementIds:await this.state.traceability.requirementIds(plan.projectId)}:undefined;
  }
  private async makerRun(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs=task.inputRefs):Promise<RunTask>{
-  return {projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
+  return {projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,requiredGates:task.requiredGates,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
  }
 
  private async waitForApproval(projectId:string,key:string,cost:number){
@@ -238,6 +242,23 @@ export class ProjectOrchestrator{
   }
  }
 
+ /**
+  * A maker step. When isolated work conflicts with something another task already integrated, the model is asked once more
+  * against the new state of the repository (its first answer is kept in the log; nothing was merged).
+  */
+ private async executeMaker(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs:string[],counters:Counters){
+  let attemptPrompt=prompt;
+  for(let conflicts=0;;conflicts++){
+   try{return await this.execute(plan,task,await this.makerRun(plan,task,attemptPrompt,manifest,inputRefs),task.id,counters);}
+   catch(error){
+    if(!(error instanceof WorkspaceError)||error.code!=="GIT_CONFLICT"||conflicts>=(this.options.maxConflictRetries??1))throw error;
+    this.emit(plan.projectId,"integration.conflict",{taskId:task.id,detail:error.evidence.join("; ")});
+    await this.state.memory.recordStatus(plan.projectId,task.id,"INTEGRATION_CONFLICT",error.evidence.join("; "));
+    attemptPrompt=prompt+"\n\n--- INTEGRATION CONFLICT ---\nYour previous change could not be merged because other tasks changed the same code ("+error.evidence.join("; ")+"). Their work is now in the repository. Produce your change again against the current repository state, keeping their changes.";
+   }
+  }
+ }
+
  /** Advances one task from whatever state the log says it is in until it is done, parked or failed. */
  private async advance(plan:ProjectPlanValue,task:TaskPlanValue,counters:Counters):Promise<"DONE"|Pause>{
   for(;;){
@@ -245,7 +266,7 @@ export class ProjectOrchestrator{
    if(state.complete)return "DONE";
    if(!state.maker){
     const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
-    const result=await this.execute(plan,task,await this.makerRun(plan,task,built.prompt,built.manifest),task.id,counters);
+    const result=await this.executeMaker(plan,task,built.prompt,built.manifest,task.inputRefs,counters);
     if(typeof result==="string")return result;
     continue;
    }
@@ -259,7 +280,7 @@ export class ProjectOrchestrator{
     const findings=state.since.filter(r=>(parseReviewVerdict(r.output)??"CHANGES_REQUIRED")==="CHANGES_REQUIRED").map((r,i)=>"REVIEWER FINDINGS "+(i+1)+":\n"+r.output).join("\n\n");
     const built=makerContext(task,this.upstreamOf(plan,task,records),this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS);
     const prompt=built.prompt+"\n\n--- PREVIOUS OUTPUT ---\n"+state.maker.output+"\n\n--- REVIEW FEEDBACK ---\n"+findings+(state.disagreement?"\n\nThe reviewers disagreed. Address every CHANGES_REQUIRED finding; if you reject one, say why under ## Decisions.":"")+"\n\nRevise the work to address every required change.";
-    const result=await this.execute(plan,task,await this.makerRun(plan,task,prompt,built.manifest,[...task.inputRefs,"execution:"+state.since.at(-1)!.taskId]),task.id,counters);
+    const result=await this.executeMaker(plan,task,prompt,built.manifest,[...task.inputRefs,"execution:"+state.since.at(-1)!.taskId],counters);
     if(typeof result==="string")return result;
     continue;
    }
@@ -293,6 +314,8 @@ export class ProjectOrchestrator{
   const plan=ProjectPlan.parse(input);this.validate(plan);
   if(plan.workspace)await new LocalRepoWorkspace(plan.workspace.path).validate({requireGit:plan.workspace.autoCommit});
   await this.state.memory.init(plan);
+  // Isolated worktrees left by a crashed run belong to nobody: remove them before starting.
+  if(plan.workspace?.isolation==="worktree")await new WorktreeManager(plan.workspace.path,join(this.state.root,"worktrees")).cleanupStale(new Set(),15*60*1000);
   this.runId=randomUUID();this.metrics=new RunMetrics(this.options.now);
   this.emit(plan.projectId,"run.started",{detail:plan.mode});
   const states=new Map<string,string>(),completed=new Set<string>(),paused=new Set<string>(),approvalRequired=new Set<string>(),failed=new Set<string>(),skipped=new Set<string>();

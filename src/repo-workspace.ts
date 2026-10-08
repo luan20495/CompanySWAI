@@ -8,14 +8,18 @@ const execFileAsync=promisify(execFile);
 export type FilePatch={path:string;content:string};
 export type CheckCommandSpec={cmd:string;args:string[];timeoutMs?:number};
 export type CheckResult={cmd:string;args:string[];exitCode:number;durationMs:number;output:string};
-export type TransactionResult={written:string[];changedFiles:string[];commitSha?:string;evidence:string[];checks:CheckResult[]};
+export type GateRun={name:string;commands:CheckCommandSpec[]};
+export type GateResult={name:string;status:"PASS"|"FAIL"|"NOT_APPLICABLE"|"NOT_CONFIGURED";detail?:string;checks:CheckResult[]};
+export type TransactionResult={written:string[];changedFiles:string[];commitSha?:string;evidence:string[];checks:CheckResult[];gates:GateResult[]};
 
 const DEFAULT_CHECK_TIMEOUT_MS=300_000;
 const OUTPUT_TAIL=2000;
 const FORBIDDEN_SEGMENTS=new Set([".git",".companyswai"]);
 
 export class WorkspaceError extends Error{
- constructor(message:string,readonly code:"UNSAFE_PATH"|"INVALID_WORKSPACE"|"CHECK_FAILED"|"DIRTY_TARGET"|"COMMIT_FAILED"|"SECRET_IN_PATCH",readonly evidence:string[]=[]){super(message);this.name="WorkspaceError";}
+ constructor(message:string,readonly code:"UNSAFE_PATH"|"INVALID_WORKSPACE"|"CHECK_FAILED"|"DIRTY_TARGET"|"COMMIT_FAILED"|"SECRET_IN_PATCH"|"GATE_NOT_CONFIGURED"|"GIT_CONFLICT"|"INTEGRATION_FAILED"|"WORKTREE_FAILED",readonly evidence:string[]=[],readonly gates:GateResult[]=[]){super(message);this.name="WorkspaceError";}
+ /** Same error with extra detail appended to the evidence (for example raw git output). */
+ withMessage(detail:string){return new WorkspaceError(this.message,this.code,[...this.evidence,redact(detail).slice(0,500)],this.gates);}
 }
 
 export function parseFilePatches(text:string):FilePatch[]{
@@ -55,7 +59,31 @@ export class LocalRepoWorkspace{
   return target;
  }
 
- private async git(args:string[]){return execFileAsync("git",args,{cwd:this.root,maxBuffer:10*1024*1024,env:sanitizedEnv()});}
+ private identity?:Promise<NodeJS.ProcessEnv>;
+ /** Commits need an author; use the repository's own identity and only fall back to a CompanySWAI one when none is configured. */
+ private commitEnv(){
+  return this.identity??=(async()=>{
+   const env=sanitizedEnv();
+   const configured=await execFileAsync("git",["config","user.email"],{cwd:this.root,env}).then(r=>r.stdout.trim(),()=>"");
+   return configured?env:{...env,GIT_AUTHOR_NAME:"CompanySWAI",GIT_AUTHOR_EMAIL:"companyswai@localhost",GIT_COMMITTER_NAME:"CompanySWAI",GIT_COMMITTER_EMAIL:"companyswai@localhost"};
+  })();
+ }
+ async git(args:string[]){return execFileAsync("git",args,{cwd:this.root,maxBuffer:10*1024*1024,env:await this.commitEnv()});}
+
+ /** Runs named gates in order and stops at the first failing one. A gate with no commands is deliberately not applicable. */
+ async runGates(gates:GateRun[]):Promise<GateResult[]>{
+  const results:GateResult[]=[];
+  for(const gate of gates){
+   if(!gate.commands.length){results.push({name:gate.name,status:"NOT_APPLICABLE",detail:"declared not applicable",checks:[]});continue;}
+   try{results.push({name:gate.name,status:"PASS",checks:await this.runChecks(gate.commands)});}
+   catch(error){
+    if(!(error instanceof WorkspaceError))throw error;
+    results.push({name:gate.name,status:"FAIL",detail:error.message,checks:[]});
+    throw new WorkspaceError("Gate '"+gate.name+"' failed: "+error.message,"CHECK_FAILED",results.flatMap(r=>r.status==="FAIL"?error.evidence.map(e=>"gate "+r.name+" "+e):r.checks.map(c=>"gate "+r.name+" "+describeCheck(c))),results);
+   }
+  }
+  return results;
+ }
 
  async runChecks(commands:CheckCommandSpec[]){
   const results:CheckResult[]=[];
@@ -79,7 +107,7 @@ export class LocalRepoWorkspace{
   * Applies patches atomically: back up, write, run checks, optionally commit only the patched paths.
   * Any failure restores the previous file contents and removes files and directories the patch created.
   */
- async transaction(requested:FilePatch[],checks:CheckCommandSpec[]=[],commitMessage?:string):Promise<TransactionResult>{
+ async transaction(requested:FilePatch[],checks:CheckCommandSpec[]=[],commitMessage?:string,options:{gates?:GateRun[]}={}):Promise<TransactionResult>{
   await this.validate({requireGit:commitMessage!=null});
   let patches=requested;
   const targets=new Map<string,FilePatch>();
@@ -109,14 +137,14 @@ export class LocalRepoWorkspace{
    }
    for(const dir of createdDirs)await rm(dir,{recursive:true,force:true});
   };
-  let results:CheckResult[]=[],commitSha:string|undefined;
+  let gateResults:GateResult[]=[],commitSha:string|undefined;
   try{
    for(const patch of patches){
     const target=await this.resolveSafe(patch.path),created=await mkdir(dirname(target),{recursive:true});
     if(created)createdDirs.push(created);
     await writeFile(target,patch.content,"utf8");
    }
-   results=await this.runChecks(checks);
+   gateResults=await this.runGates(options.gates??(checks.length?[{name:"project-checks",commands:checks}]:[]));
    if(commitMessage!=null&&changed.length){
     try{
      await this.git(["add","--",...paths]);
@@ -128,7 +156,8 @@ export class LocalRepoWorkspace{
     }
    }
   }catch(error){await rollback();throw error;}
-  return {written:patches.map(p=>p.path),changedFiles:changed,commitSha,evidence:results.map(describeCheck),checks:results};
+  const results=gateResults.flatMap(g=>g.checks);
+  return {written:patches.map(p=>p.path),changedFiles:changed,commitSha,evidence:gateResults.flatMap(g=>g.checks.map(c=>"gate "+g.name+" "+describeCheck(c))),checks:results,gates:gateResults};
  }
 }
 export const describeCheck=(r:CheckResult)=>"check: "+[r.cmd,...r.args].join(" ")+" → exit "+r.exitCode+" ("+r.durationMs+"ms)";

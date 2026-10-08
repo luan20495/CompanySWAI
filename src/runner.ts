@@ -3,7 +3,8 @@ import type {ModelProvider} from "./provider.js";
 import type {ExecutionRecordValue} from "./execution-record.js";
 import type {CompanyState} from "./state.js";
 import {condense,contractViolations,isNone,parseAgentOutput,parseReviewVerdict,type ContractRequirement} from "./output-parser.js";
-import {LocalRepoWorkspace,WorkspaceError,parseFilePatches,type CheckCommandSpec} from "./repo-workspace.js";
+import {LocalRepoWorkspace,WorkspaceError,parseFilePatches,type CheckCommandSpec,type FilePatch,type GateResult,type GateRun} from "./repo-workspace.js";
+import {runIsolated} from "./worktrees.js";
 import {redact,redactError} from "./secrets.js";
 import {runValidators} from "./validators.js";
 import {parseArchitectureReview,parseQa,parseRequirements,parseResearch} from "./structured.js";
@@ -16,7 +17,9 @@ export type RunTask={
  /** Which context this execution was built from: the proof of what it was (and was not) given. */
  contextRefs?:string[];slot?:number;profileId?:string;reviewedTaskId?:string;
  estimatedCost?:number;inputCostPerMillion?:number;outputCostPerMillion?:number;billing?:"metered"|"subscription";
- workspace?:{path:string;checks:CheckCommandSpec[];autoCommit:boolean};
+ /** Code gates (typecheck, unit-tests, …) this task must pass when it delivers code. */
+ requiredGates?:string[];
+ workspace?:{path:string;checks:CheckCommandSpec[];gates:Record<string,CheckCommandSpec[]>;setup:CheckCommandSpec[];autoCommit:boolean;isolation:"none"|"worktree"};
  handoffTo?:Array<{taskId:string;role:string}>;
 };
 
@@ -26,6 +29,7 @@ export class ContractViolationError extends Error{
 }
 
 const REPAIR_ECHO_CHARS=12000;
+const gateRecords=(gates:GateResult[])=>gates.map(g=>({name:g.name,status:g.status,detail:g.detail}));
 const clip=(id:string,length=128)=>id.slice(0,length);
 
 /**
@@ -110,16 +114,36 @@ export class TaskRunner{
   }
  }
 
+ /** Which gates this task must pass: the plan's required list resolved against the workspace configuration. Unconfigured required gates fail closed. */
+ private resolveGates(task:RunTask):{gates:GateRun[];integration:GateRun[]}{
+  const ws=task.workspace!,required=task.requiredGates??[];
+  const commandsFor=(name:string)=>name==="project-checks"?(ws.checks.length?ws.checks:ws.gates["project-checks"]):ws.gates[name];
+  const integration=ws.checks.length?[{name:"project-checks",commands:ws.checks}]:[];
+  if(!required.length)return {gates:integration,integration};
+  const missing=required.filter(name=>commandsFor(name)===undefined);
+  if(missing.length)throw new WorkspaceError("Required code gate(s) not configured: "+missing.join(", ")+". Add them to workspace.gates (an empty list declares a gate not applicable).","GATE_NOT_CONFIGURED",missing.map(name=>"gate "+name+": NOT_CONFIGURED"),missing.map(name=>({name,status:"NOT_CONFIGURED" as const,detail:"not configured",checks:[]})));
+  return {gates:required.map(name=>({name,commands:commandsFor(name)!})),integration};
+ }
+
+ /** Applies delivered code: in the main workspace, or in an isolated worktree that is integrated once its gates pass. */
+ private async applyCode(task:RunTask,patches:FilePatch[]){
+  const ws=task.workspace!,{gates,integration}=this.resolveGates(task),message="CompanySWAI: "+task.taskId;
+  if(ws.isolation==="worktree"){
+   return runIsolated({repo:ws.path,stateRoot:this.state.root,projectId:task.projectId,taskId:task.taskId,patches,gates,setup:ws.setup,integrationGates:integration,commitMessage:message});
+  }
+  return new LocalRepoWorkspace(ws.path).transaction(patches,[],ws.autoCommit?message:undefined,{gates});
+ }
+
  async finalize(task:RunTask,checkpointed:ExecutionRecordValue):Promise<ExecutionRecordValue>{
   const {state}=this,id=checkpointed.id,output=checkpointed.output,finishedAt=new Date().toISOString();
   const base={...this.base({...task,estimatedCost:task.estimatedCost??checkpointed.estimatedCost},id,checkpointed.startedAt,{name:checkpointed.provider,model:checkpointed.model}),inputTokens:checkpointed.inputTokens,outputTokens:checkpointed.outputTokens,actualCost:checkpointed.actualCost};
   try{
    const patches=task.kind==="maker"?parseFilePatches(output):[];
-   let changedFiles:string[]=[],commitSha:string|undefined,evidence:string[]=[];
+   let changedFiles:string[]=[],commitSha:string|undefined,evidence:string[]=[],gates:GateResult[]=[];
    if(patches.length){
     if(!task.workspace)throw new WorkspaceError("Agent produced file patches but project has no workspace configured","INVALID_WORKSPACE");
-    const result=await new LocalRepoWorkspace(task.workspace.path).transaction(patches,task.workspace.checks,task.workspace.autoCommit?"CompanySWAI: "+task.taskId:undefined);
-    changedFiles=result.changedFiles;commitSha=result.commitSha;evidence=result.evidence;
+    const result=await this.applyCode(task,patches);
+    changedFiles=result.changedFiles;commitSha=result.commitSha;evidence=result.evidence;gates=result.gates;
    }
    const parsed=parseAgentOutput(output),artifactId=clip(task.taskId+"-"+id.slice(0,8));
    await state.artifacts.save(task.projectId,artifactId,{id:artifactId,projectId:task.projectId,taskId:task.taskId,kind:patches.length?"code":"document",title:task.agentRole+" output",content:output,createdAt:finishedAt});
@@ -153,7 +177,7 @@ export class TaskRunner{
     }
    }
    const refs=[artifactId,...changedFiles.map(x=>"file:"+x),...(commitSha?["commit:"+commitSha]:[]),...handoffRefs];
-   const record=await state.executions.append({...base,status:"SUCCEEDED",finishedAt,output,artifactRefs:refs,decisionRefs,reviewRefs,blockerRefs,changedFiles,commitSha,evidence});
+   const record=await state.executions.append({...base,status:"SUCCEEDED",finishedAt,output,artifactRefs:refs,decisionRefs,reviewRefs,blockerRefs,changedFiles,commitSha,evidence,gates:gateRecords(gates)});
    await state.memory.recordStatus(task.projectId,task.taskId,"SUCCEEDED",commitSha?"commit "+commitSha:changedFiles.length?changedFiles.length+" file(s) changed":"");
    await state.checkpoints.save(task.projectId,{taskId:task.taskId,at:finishedAt,status:task.kind==="maker"?"REVIEW":"DONE",completed:["model-execution",...(changedFiles.length?["workspace-patch","deterministic-checks"]:[])],remaining:task.kind==="maker"?["review"]:[],artifactRefs:refs,decisionRefs,compactContext:output.slice(0,8000),provider:checkpointed.provider,model:checkpointed.model,inputTokens:checkpointed.inputTokens,outputTokens:checkpointed.outputTokens});
    return record;
@@ -162,7 +186,7 @@ export class TaskRunner{
    if(error instanceof WorkspaceError){
     const message=redactError(error);
     await state.memory.recordStatus(task.projectId,task.taskId,"FAILED",message);
-    await state.executions.append({...base,status:"FAILED",finishedAt:new Date().toISOString(),output,error:message,evidence:error.evidence});
+    await state.executions.append({...base,status:"FAILED",finishedAt:new Date().toISOString(),output,error:message,evidence:error.evidence,gates:gateRecords(error.gates)});
    }
    throw error;
   }
