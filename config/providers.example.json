@@ -5,9 +5,10 @@
       "provider":"anthropic",
       "model":"claude-sonnet-4-5",
       "credentialEnv":"ANTHROPIC_API_KEY",
-      "state":"AVAILABLE",
       "capabilities":["reasoning","product","architecture","coding","design","deployment","testing","review"],
       "contextWindow":200000,
+      "inputCostPerMillion":3,
+      "outputCostPerMillion":15,
       "maxConcurrency":2,
       "estimatedTokensPerSecond":50
     },
@@ -16,11 +17,24 @@
       "provider":"openrouter",
       "model":"anthropic/claude-sonnet-4.5",
       "credentialEnv":"OPENROUTER_API_KEY",
-      "state":"AVAILABLE",
       "capabilities":["reasoning","product","architecture","coding","design","deployment","testing","review"],
       "contextWindow":200000,
+      "inputCostPerMillion":3,
+      "outputCostPerMillion":15,
       "maxConcurrency":2,
       "estimatedTokensPerSecond":50
+    },
+    {
+      "id":"local-compatible",
+      "provider":"openai-compatible",
+      "model":"your-local-model",
+      "baseUrl":"http://127.0.0.1:8080/v1",
+      "credentialEnv":"LOCAL_LLM_API_KEY",
+      "capabilities":["reasoning","product","architecture","coding","design","testing","review"],
+      "contextWindow":32000,
+      "inputCostPerMillion":0,
+      "outputCostPerMillion":0,
+      "maxConcurrency":1
     }
   ]
 }

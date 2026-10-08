@@ -1,6 +1,8 @@
 import {ProjectPlan,type ProjectPlanValue,type ProjectPlanInput} from "./project.js";
 import type {ProviderSelector,ProviderSelection} from "./provider-selector.js";
 import {CapacityUnavailableError} from "./errors.js";
+import {isProviderFailure} from "./provider-selector.js";
+import {redactError} from "./secrets.js";
 import {assertBudget,ApprovalRequiredError} from "./budget.js";
 import {FileApprovalStore} from "./approval-store.js";
 import {KeyedSemaphore} from "./semaphore.js";
@@ -22,7 +24,6 @@ export class ProjectOrchestrator{
  private requestFor(target:SelectionFields,exclude:ProviderSelection[]=[]){return {preferredProvider:target.provider,preferredModel:target.model,demand:{capabilities:target.capabilities,estimatedInputTokens:target.estimatedInputTokens,estimatedOutputTokens:target.estimatedOutputTokens,maxCost:target.maxCost,minContextWindow:target.minContextWindow},exclude:exclude.map(item=>({provider:item.profile.provider,model:item.profile.model,profileId:item.profile.id}))};}
  private validateGraph(plan:ProjectPlanValue){const ids=new Set<string>();for(const task of plan.tasks){if(ids.has(task.id))throw new Error("Duplicate task id: "+task.id);ids.add(task.id);}for(const task of plan.tasks)for(const dep of task.dependencies)if(!ids.has(dep))throw new Error("Missing dependency "+dep+" for "+task.id);}
  private verdict(output:string){const first=output.split(/\r?\n/).map(x=>x.trim()).find(Boolean)?.toUpperCase()??"";if(first.startsWith("PASS"))return "PASS" as const;if(first.startsWith("CHANGES_REQUIRED"))return "CHANGES_REQUIRED" as const;throw new Error("Reviewer must start with PASS or CHANGES_REQUIRED");}
- private isCapacityFailure(error:unknown){if(!(error instanceof Error))return false;return error instanceof CapacityUnavailableError||/429|rate.?limit|quota|credit|capacity|overloaded/i.test(error.message);}
  private downstream(plan:ProjectPlanValue,taskId:string){return plan.tasks.filter(t=>t.dependencies.includes(taskId)).map(t=>({taskId:t.id,role:t.agentRole}));}
  private history(records:ExecutionRecordValue[],task:TaskPlan){
   const indexed=records.map((record,index)=>({record,index}));
@@ -42,9 +43,9 @@ export class ProjectOrchestrator{
    let selection:ProviderSelection;
    try{selection=this.selectProvider(this.requestFor(target,tried));}catch(error){if(error instanceof CapacityUnavailableError){await this.runner.pauseCapacity(task,error.message);return undefined;}throw error;}
    const records=await this.executions.list(plan.projectId),approved=selection.estimatedCost==null?false:await this.approvals.covers(plan.projectId,approvalKey,selection.estimatedCost);
-   try{assertBudget(plan.budget,records,{taskId:approvalKey,department:task.department??"general",agentRole:task.agentRole},selection.estimatedCost,approved);}catch(error){if(error instanceof ApprovalRequiredError){await this.approvals.request(plan.projectId,approvalKey,error.estimatedCost);await this.memory.recordStatus(plan.projectId,approvalKey,"APPROVAL_REQUIRED",error.message);return "APPROVAL_REQUIRED" as const;}throw error;}
+   try{assertBudget(plan.budget,records,{taskId:approvalKey,department:task.department??"general",agentRole:task.agentRole},selection.estimatedCost,approved);}catch(error){this.selectProvider.release?.(selection);if(error instanceof ApprovalRequiredError){await this.approvals.request(plan.projectId,approvalKey,error.estimatedCost);await this.memory.recordStatus(plan.projectId,approvalKey,"APPROVAL_REQUIRED",error.message);return "APPROVAL_REQUIRED" as const;}throw error;}
    const priced={...task,estimatedCost:selection.estimatedCost,inputCostPerMillion:selection.profile.inputCostPerMillion,outputCostPerMillion:selection.profile.outputCostPerMillion};
-   try{const result=await this.capacity.use(selection.profile.provider+"/"+selection.profile.model,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));this.selectProvider.reportSuccess?.(selection,{inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCost:result.actualCost});return result;}catch(error){if(!this.isCapacityFailure(error))throw error;this.selectProvider.reportFailure?.(selection,error);tried.push(selection);}
+   try{const result=await this.capacity.use(selection.profile.id??selection.profile.provider+"/"+selection.profile.model,selection.profile.maxConcurrency,()=>this.runner.run(priced,selection.provider));this.selectProvider.reportSuccess?.(selection,{inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCost:result.actualCost});return result;}catch(error){if(!isProviderFailure(error)){this.selectProvider.release?.(selection);throw error;}this.selectProvider.reportFailure?.(selection,error);tried.push(selection);}
   }
  }
  async run(input:ProjectPlanInput):Promise<ProjectRunSummary>{
