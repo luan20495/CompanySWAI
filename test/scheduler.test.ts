@@ -4,7 +4,7 @@ import {ProjectOrchestrator,pickNext} from "../src/orchestrator.js";
 import {createCapacitySelector} from "../src/provider-selector.js";
 import {RunMetrics} from "../src/metrics.js";
 import {buildProjectStatus} from "../src/telemetry.js";
-import {compliant,plan,selectorFor,task,tmpState,usage} from "./helpers.js";
+import {compliant,plan,rendezvous,selectorFor,task,tmpState,usage} from "./helpers.js";
 
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 const profile=(id:string,extra={})=>({id,inputCostPerMillion:1,outputCostPerMillion:1,maxConcurrency:1,...extra});
@@ -33,15 +33,15 @@ test("compiled plans give the tasks that unblock the most work the highest prior
 });
 
 test("per-project concurrency limits running tasks even when providers could run more (backpressure)",async()=>{
- let active=0,max=0;
- const selector=selectorFor(async()=>{active++;max=Math.max(max,active);await sleep(20);active--;return usage(compliant());},[profile("wide",{maxConcurrency:10})]);
+ let active=0,max=0;const meet=rendezvous(2);
+ const selector=selectorFor(async()=>{active++;max=Math.max(max,active);await meet();await sleep(10);active--;return usage(compliant());},[profile("wide",{maxConcurrency:10})]);
  const summary=await new ProjectOrchestrator(selector,await tmpState(),{maxParallelTasks:2}).run(plan("bp",Array.from({length:6},(_,i)=>task("t"+i))));
  assert.equal(summary.completed.length,6);assert.equal(max,2);
 });
 
 test("per-provider concurrency: waiting tasks resume on completion events, not by polling",async()=>{
  let active=0,max=0,selections=0;
- const inner=selectorFor(async()=>{active++;max=Math.max(max,active);await sleep(30);active--;return usage(compliant());},[profile("solo",{maxConcurrency:1})]);
+ const inner=selectorFor(async()=>{active++;max=Math.max(max,active);await sleep(15);active--;return usage(compliant());},[profile("solo",{maxConcurrency:1})]);
  const counting=Object.assign((request:Parameters<typeof inner>[0])=>{selections++;return inner(request);},{reportSuccess:inner.reportSuccess,reportFailure:inner.reportFailure,release:inner.release,snapshot:inner.snapshot,health:inner.health}) as typeof inner;
  const started=Date.now();
  const summary=await new ProjectOrchestrator(counting,await tmpState(),{maxParallelTasks:6}).run(plan("pp",Array.from({length:5},(_,i)=>task("t"+i))));

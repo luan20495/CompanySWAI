@@ -4,7 +4,7 @@ import {CapacityUnavailableError} from "../src/errors.js";
 import {ProjectOrchestrator} from "../src/orchestrator.js";
 import {TaskRunner} from "../src/runner.js";
 import {createCapacitySelector,type ProviderSelector} from "../src/provider-selector.js";
-import {changes,compliant,isReviewRequest,pass,plan,reviewer,selectorFor,task,tmpState,usage} from "./helpers.js";
+import {changes,compliant,isReviewRequest,pass,plan,rendezvous,reviewer,selectorFor,task,tmpState,usage} from "./helpers.js";
 
 test("orchestrator runs dependency waves and hands upstream sections, not whole transcripts, downstream",async()=>{
  const state=await tmpState(),prompts:string[]=[];
@@ -165,15 +165,15 @@ test("provider failover: a quota error moves the task to the backup profile",asy
 });
 
 test("maxConcurrency is enforced per profile and parallel profiles run in parallel",async()=>{
- const measure=async(profiles:Array<{id:string;maxConcurrency:number}>)=>{
-  let active=0,max=0;
-  const selector=selectorFor(async()=>{active++;max=Math.max(max,active);await new Promise(r=>setTimeout(r,25));active--;return usage(compliant());},profiles.map(p=>({...p,inputCostPerMillion:1,outputCostPerMillion:1})));
+ const measure=async(profiles:Array<{id:string;maxConcurrency:number}>,expected:number)=>{
+  let active=0,max=0;const meet=rendezvous(expected);
+  const selector=selectorFor(async()=>{active++;max=Math.max(max,active);await meet();await new Promise(r=>setTimeout(r,10));active--;return usage(compliant());},profiles.map(p=>({...p,inputCostPerMillion:1,outputCostPerMillion:1})));
   await new ProjectOrchestrator(selector,await tmpState()).run(plan("cc",[task("a"),task("b"),task("c"),task("d")]));
   return max;
  };
- assert.equal(await measure([{id:"only",maxConcurrency:1}]),1);
- assert.equal(await measure([{id:"one",maxConcurrency:1},{id:"two",maxConcurrency:1}]),2);
- assert.equal(await measure([{id:"wide",maxConcurrency:3}]),3);
+ assert.equal(await measure([{id:"only",maxConcurrency:1}],1),1);
+ assert.equal(await measure([{id:"one",maxConcurrency:1},{id:"two",maxConcurrency:1}],2),2);
+ assert.equal(await measure([{id:"wide",maxConcurrency:3}],3),3);
 });
 
 test("budget: parallel tasks cannot jointly overspend; exceeded budget fails the task with a blocker",async()=>{

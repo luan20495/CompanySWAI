@@ -37,3 +37,10 @@ export const plan=(projectId:string,tasks:ReturnType<typeof task>[],extra:Record
 export const fakeAnthropicKey=()=>["sk","ant","api03","abcdefghij1234567890"].join("-");
 export const fakeOpenRouterKey=()=>["sk","or","live","secret","value","123456"].join("-");
 export const fakePrivateKey=()=>["-----BEGIN RSA ","PRIVATE KEY-----\nabc\n-----END RSA ","PRIVATE KEY-----"].join("");
+
+/** One-shot barrier: resolves once `n` callers have arrived (or after a safety timeout), then lets everyone straight through. Removes sleep-based timing from concurrency assertions. */
+export function rendezvous(n:number,timeoutMs=2000){
+ let arrived=0,open=n<=1;const waiters:Array<()=>void>=[];
+ const release=()=>{open=true;for(const w of waiters.splice(0))w();};
+ return ()=>open?Promise.resolve():new Promise<void>(resolve=>{waiters.push(resolve);arrived++;if(arrived>=n)release();else setTimeout(release,timeoutMs).unref();});
+}
