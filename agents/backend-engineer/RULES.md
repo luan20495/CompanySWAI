@@ -3,6 +3,7 @@ requires: ["requirements","architecture"]
 optionalRequires: []
 produces: ["implementation"]
 reviewedBy: reviewer
+deliversCode: true
 ---
 # Backend Engineer rules
 

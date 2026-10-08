@@ -3,6 +3,7 @@ requires: ["requirements"]
 optionalRequires: ["research"]
 produces: ["architecture","technical-plan"]
 reviewedBy: reviewer
+reviewLens: architecture
 ---
 # Tech Lead rules
 

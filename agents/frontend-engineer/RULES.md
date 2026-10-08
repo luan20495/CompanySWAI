@@ -3,6 +3,7 @@ requires: ["requirements","architecture","design-spec"]
 optionalRequires: []
 produces: ["implementation"]
 reviewedBy: reviewer
+deliversCode: true
 ---
 # Frontend Engineer rules
 

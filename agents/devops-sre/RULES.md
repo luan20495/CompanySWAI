@@ -3,6 +3,7 @@ requires: ["architecture"]
 optionalRequires: ["implementation"]
 produces: ["deployment"]
 reviewedBy: reviewer
+deliversCode: true
 ---
 # DevOps / SRE rules
 

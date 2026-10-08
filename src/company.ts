@@ -27,6 +27,30 @@ const ContractMeta=z.object({
  sections:z.array(z.string().min(1)).min(1),reviewerSections:z.array(z.string().min(1)).default([]),verdicts:z.array(z.string().min(1)).min(1)
 });
 const MemoryMeta=z.object({routes:z.record(z.string(),z.string().regex(/^[A-Z]+\.md$/)),fallback:z.string().regex(/^[A-Z]+\.md$/)});
+const Risk=z.enum(["low","medium","high","critical"]);
+export type Risk=z.infer<typeof Risk>;
+export const ReviewLevel=z.enum(["NORMAL","CRITICAL","HIGH_RISK"]);
+export type ReviewLevelValue=z.infer<typeof ReviewLevel>;
+export const QualityMode=z.enum(["FAST","BALANCED","MAX_QUALITY"]);
+export type QualityModeValue=z.infer<typeof QualityMode>;
+export const RoutingPolicy=z.enum(["QUALITY_FIRST","BALANCED","COST_FIRST","LOCAL_FIRST"]);
+export type RoutingPolicyValue=z.infer<typeof RoutingPolicy>;
+const PolicyMeta=z.object({
+ levels:z.record(ReviewLevel,z.object({reviewers:z.number().int().min(1).max(3),gates:z.array(z.string())})),
+ modes:z.record(QualityMode,z.object({
+  reviewRisks:z.array(Risk),levelByRisk:z.partialRecord(Risk,ReviewLevel),routing:RoutingPolicy,
+  minQualityTier:z.number().int().min(1).max(5),requiredGates:z.array(z.string()),qa:z.enum(["light","standard","deep"])
+ }))
+});
+export type PolicyDefinition=z.infer<typeof PolicyMeta>;
+const Applies=z.object({appliesWhen:z.string().min(1)});
+const GatesMeta=z.object({
+ codeGates:z.record(z.string(),Applies),architectureCategories:z.record(z.string(),Applies),
+ lenses:z.record(z.string(),z.object({validator:z.string().optional(),skill:z.string().optional(),instruction:z.string().min(1)})),
+ qaStatuses:z.array(z.string()).min(1)
+});
+export type GatesDefinition=z.infer<typeof GatesMeta>;
+
 export type OutputContract=z.infer<typeof ContractMeta>;
 export type MemoryRouting=z.infer<typeof MemoryMeta>;
 
@@ -36,10 +60,11 @@ export async function loadMemoryRouting(root="company"):Promise<MemoryRouting>{
 }
 
 export async function loadCompanyMarkdown(root="company"){
- const [company,workflow,quality,contractFile,memory]=await Promise.all([
+ const [company,workflow,quality,contractFile,memory,policyFile,gatesFile]=await Promise.all([
   readFile(root+"/COMPANY.md","utf8"),readFile(root+"/WORKFLOW.md","utf8"),readFile(root+"/QUALITY-GATES.md","utf8"),
-  readFile(root+"/OUTPUT-CONTRACT.md","utf8"),loadMemoryRouting(root)
+  readFile(root+"/OUTPUT-CONTRACT.md","utf8"),loadMemoryRouting(root),readFile(root+"/POLICY.md","utf8"),readFile(root+"/GATES.md","utf8")
  ]);
  const contract=parseMarkdownFrontmatter(contractFile);
- return {company,workflow,quality,contractText:contract.body,contract:ContractMeta.parse(contract.meta),memory};
+ return {company,workflow,quality,contractText:contract.body,contract:ContractMeta.parse(contract.meta),memory,
+  policy:PolicyMeta.parse(parseMarkdownFrontmatter(policyFile).meta),gates:GatesMeta.parse(parseMarkdownFrontmatter(gatesFile).meta)};
 }
