@@ -66,7 +66,7 @@ export async function runBenchmark(options:BenchmarkOptions={}):Promise<Benchmar
   {id:"secondary",provider:"beta",model:"beta-model",qualityTier:4,inputCostPerMillion:1,outputCostPerMillion:5,...common}
  ],(name)=>provider(name,name==="alpha"),{defaultPolicy:"QUALITY_FIRST",unavailableCooldownMs:1,cooldownMs:1});
 
- const run=()=>runAutonomous({brief:withWorkspace},{state,selector,dryRun:!live,knownRoles:roles,knownSkills:skills,orchestrator:{maxParallelTasks:4}});
+ const run=()=>runAutonomous({brief:withWorkspace},{state,selector,replan:Boolean(options.stateDir),dryRun:!live,knownRoles:roles,knownSkills:skills,orchestrator:{maxParallelTasks:4}});
  const first=await run();
  const firstFailed=first.summary?.failed??[];
  // Resume: a crashed or parked run is simply run again; finished work must not be repeated.

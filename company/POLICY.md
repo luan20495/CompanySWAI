@@ -1,8 +1,8 @@
 ---
 levels: {
- "NORMAL":{"reviewers":1,"gates":[]},
- "CRITICAL":{"reviewers":2,"gates":[]},
- "HIGH_RISK":{"reviewers":2,"gates":["checks","qa","security"]}
+ "NORMAL":{"reviewers":1,"maxRounds":2,"gates":[]},
+ "CRITICAL":{"reviewers":2,"maxRounds":3,"gates":[]},
+ "HIGH_RISK":{"reviewers":2,"maxRounds":4,"gates":["checks","qa","security"]}
 }
 qaDepth: {
  "light":{"minTests":1,"guidance":"Light QA: cover each requirement with at least one test of its main acceptance criterion."},
@@ -32,9 +32,9 @@ modes: {
 Quality mode (`FAST`, `BALANCED`, `MAX_QUALITY`, chosen in the project brief) decides how much independent assurance a project gets. Risk comes from the brief (security-critical > performance-critical > high complexity).
 
 ## Review levels
-- **NORMAL**: one independent reviewer.
-- **CRITICAL**: two independent reviewers in separate contexts. Both must `PASS`; any `CHANGES_REQUIRED` sends the work back to its maker with every finding, and a PASS/CHANGES_REQUIRED split is recorded as a reviewer disagreement and reconciled by the revision.
-- **HIGH_RISK**: two reviewers (the second applies the security lens where security applies), deterministic checks must have passed, and the project is only accepted when the QA gate passes.
+- **NORMAL**: one independent reviewer (up to 2 review rounds).
+- **CRITICAL** (up to 3 rounds): two independent reviewers in separate contexts. Both must `PASS`; any `CHANGES_REQUIRED` sends the work back to its maker with every finding, and a PASS/CHANGES_REQUIRED split is recorded as a reviewer disagreement and reconciled by the revision.
+- **HIGH_RISK** (up to 4 rounds): two reviewers (the second applies the security lens where security applies), deterministic checks must have passed, and the project is only accepted when the QA gate passes.
 
 ## Modes
 - **FAST**: reviews only high and critical risk work; cheapest eligible provider; light QA.

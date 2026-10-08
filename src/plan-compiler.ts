@@ -47,7 +47,7 @@ export async function compileBriefToProjectPlan(input:ProjectBriefInput,learning
    ...(task.review?{review:{
     role:task.review.role,department:task.review.department,system:task.review.system+learningFor(task.review.role,task.review.skills,work.signals,learning),capabilities:task.review.capabilities,contract:task.review.contract,
     level:task.review.level,gates:task.review.gates,slots:task.review.slots.map(slot=>({...slot,system:slot.system+learningFor(task.review!.role,task.review!.skills,work.signals,learning)})),
-    ...quality,estimatedInputTokens:3000,estimatedOutputTokens:2000,maxTokens:3000,maxRounds:task.risk==="critical"?3:2
+    ...quality,estimatedInputTokens:3000,estimatedOutputTokens:2000,maxTokens:3000,maxRounds:task.review.maxRounds
    }}:{})
   }))
  });

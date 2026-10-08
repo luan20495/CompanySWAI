@@ -27,7 +27,7 @@ export type ProjectBriefInput=z.input<typeof ProjectBrief>;
 type Contract={sections:string[];verdict:boolean;validators:string[];params:Record<string,unknown>};
 export type PlannedReviewSlot={lens?:string;system:string;contract:Contract};
 export type PlannedReview={
- role:string;department:string;level:string;reviewers:number;gates:string[];system:string;capabilities:string[];
+ role:string;department:string;level:string;reviewers:number;maxRounds:number;gates:string[];system:string;capabilities:string[];
  contract:Contract;slots:PlannedReviewSlot[];skills:string[];
 };
 export type PlannedTask={
@@ -83,7 +83,7 @@ export async function planCompanyWork(input:ProjectBriefInput,registry=new Markd
     slots.push({lens:lensName,system:systemPromptFor(reviewerAgent,md.company,md.workflow,md.quality,md.contractText,extra),
      contract:{sections:[...md.contract.reviewerSections,...(lens?.sections??[])],verdict:true,validators:lens?.validator?[lens.validator]:[],params:{architectureCategories}}});
    }
-   review={role:reviewerAgent.id,department:reviewerAgent.department,level:decision.level,reviewers:decision.reviewers,gates:decision.gates,system:slots[0].system,capabilities:reviewerAgent.modelCapabilities,contract:slots[0].contract,slots,skills:reviewSkills.map(s=>s.name)};
+   review={role:reviewerAgent.id,department:reviewerAgent.department,level:decision.level,reviewers:decision.reviewers,maxRounds:decision.maxRounds,gates:decision.gates,system:slots[0].system,capabilities:reviewerAgent.modelCapabilities,contract:slots[0].contract,slots,skills:reviewSkills.map(s=>s.name)};
   }
   tasks.push({
    id:agent.id,department:agent.department,agentRole:agent.id,dependencies:[...deps],objective:brief.objective+"\n\nAssigned responsibility: "+agent.identity.split(/\r?\n/)[0]+(contract.validators.includes("qa-traceability")?"\n\n"+qaDepth.guidance:""),

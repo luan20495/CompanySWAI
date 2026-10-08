@@ -5,7 +5,7 @@ import {loadRuntime} from "./runtime.js";
 
 const args=process.argv.slice(2),flag=(name:string)=>{const i=args.indexOf(name);return i>=0?args[i+1]:undefined;};
 const live=args.includes("--live"),out=flag("--out");
-let options:Parameters<typeof runBenchmark>[0]={briefPath:flag("--brief")};
+let options:Parameters<typeof runBenchmark>[0]={briefPath:flag("--brief"),stateDir:flag("--state-dir")};
 if(live){
  const runtime=await loadRuntime(flag("--runtime")??"config/providers.json");
  options={...options,live:{selector:runtime.selector,label:runtime.profiles.map(p=>p.provider+"/"+p.model).join(", ")}};

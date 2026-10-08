@@ -68,10 +68,10 @@ test("quality modes decide who is reviewed and how thoroughly (policy comes from
  const md=await loadCompanyMarkdown();
  assert.equal(reviewDecision(md.policy,"FAST","medium"),undefined);
  assert.equal(reviewDecision(md.policy,"FAST","critical")?.level,"NORMAL");
- assert.deepEqual(reviewDecision(md.policy,"BALANCED","medium"),{level:"NORMAL",reviewers:1,gates:[]});
+ assert.deepEqual(reviewDecision(md.policy,"BALANCED","medium"),{level:"NORMAL",reviewers:1,maxRounds:2,gates:[]});
  assert.equal(reviewDecision(md.policy,"BALANCED","critical")?.reviewers,2);
  assert.equal(reviewDecision(md.policy,"MAX_QUALITY","high")?.level,"CRITICAL");
- assert.deepEqual(reviewDecision(md.policy,"MAX_QUALITY","critical"),{level:"HIGH_RISK",reviewers:2,gates:["checks","qa","security"]});
+ assert.deepEqual(reviewDecision(md.policy,"MAX_QUALITY","critical"),{level:"HIGH_RISK",reviewers:2,maxRounds:4,gates:["checks","qa","security"]});
  const brief={projectId:"q1",objective:"Build a secure commerce backend",capabilities:["backend","security-critical"] as ("backend"|"security-critical")[],complexity:4 as const};
  const count=async(mode:"FAST"|"BALANCED"|"MAX_QUALITY")=>(await compileBriefToProjectPlan({...brief,mode})).tasks.map(t=>t.review?.slots.length??0);
  assert.ok((await count("FAST")).every(n=>n<=1));
