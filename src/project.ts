@@ -50,6 +50,8 @@ const TaskPlan=Selection.and(z.object({
  skills:z.array(z.string()).default([]),
  /** Code gates this task must pass when it delivers code. */
  requiredGates:z.array(z.string()).default([]),
+ /** True when this task's deliverable is code in the project workspace. */
+ deliversCode:z.boolean().default(false),
  /** Higher runs first among ready tasks; aging prevents starvation of low priorities. */
  priority:z.number().default(0),
  contract:Contract.default({sections:[],verdict:false,validators:[],params:{}}),

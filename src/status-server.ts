@@ -2,6 +2,9 @@ import {createServer,type IncomingMessage,type ServerResponse} from "node:http";
 import {FileExecutionStore} from "./execution-store.js";
 import {SafeId} from "./ids.js";
 import {buildTaskSnapshots} from "./status.js";
+import {dirname} from "node:path";
+import {CompanyState} from "./state.js";
+import {projectStatusView} from "./status-view.js";
 
 function json(response:ServerResponse,status:number,body:unknown){
  const text=JSON.stringify(body,null,2);
@@ -17,7 +20,7 @@ function projectFromPath(pathname:string,suffix:string){
  return parsed.success?parsed.data:null;
 }
 
-export function createStatusServer(executionRoot=".companyswai/executions"){
+export function createStatusServer(executionRoot=".companyswai/executions",state=new CompanyState(dirname(executionRoot))){
  const store=new FileExecutionStore(executionRoot);
  return createServer(async(request:IncomingMessage,response:ServerResponse)=>{
   try{
@@ -31,6 +34,13 @@ export function createStatusServer(executionRoot=".companyswai/executions"){
     json(response,200,{projectId:executionsProject,records:await store.list(executionsProject)});
     return;
    }
+
+   const statusProject=projectFromPath(url.pathname,"status");
+   if(statusProject===null){json(response,400,{error:"INVALID_PROJECT_ID"});return;}
+   if(statusProject){json(response,200,await projectStatusView(state,statusProject));return;}
+   const telemetryProject=projectFromPath(url.pathname,"telemetry");
+   if(telemetryProject===null){json(response,400,{error:"INVALID_PROJECT_ID"});return;}
+   if(telemetryProject){json(response,200,{projectId:telemetryProject,events:(await state.telemetry.list(telemetryProject)).slice(-200)});return;}
 
    const tasksProject=projectFromPath(url.pathname,"tasks");
    if(tasksProject===null){json(response,400,{error:"INVALID_PROJECT_ID"});return;}

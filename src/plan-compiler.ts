@@ -42,7 +42,7 @@ export async function compileBriefToProjectPlan(input:ProjectBriefInput,learning
   projectId:work.projectId,mode:brief.mode,budget:brief.budget,research:brief.research,signals:work.signals,...(workspace?{workspace}:{}),
   tasks:work.tasks.map(task=>({
    id:task.id,agentRole:task.agentRole,department:task.department,dependencies:task.dependencies,system:task.system+learningFor(task.agentRole,task.skills,work.signals,learning),prompt:task.objective,inputRefs:[],
-   capabilities:task.capabilities,produces:task.produces,contract:task.contract,risk:task.risk,skills:task.skills,requiredGates:task.requiredGates,priority:critical(task.id),
+   capabilities:task.capabilities,produces:task.produces,contract:task.contract,risk:task.risk,skills:task.skills,requiredGates:task.requiredGates,deliversCode:task.deliversCode,priority:critical(task.id),
    ...quality,estimatedInputTokens:task.risk==="critical"?5000:3000,estimatedOutputTokens:task.risk==="critical"?5000:3000,maxTokens:task.risk==="critical"?6000:4096,
    ...(task.review?{review:{
     role:task.review.role,department:task.review.department,system:task.review.system+learningFor(task.review.role,task.review.skills,work.signals,learning),capabilities:task.review.capabilities,contract:task.review.contract,
