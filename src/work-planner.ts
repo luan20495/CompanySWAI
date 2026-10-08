@@ -3,7 +3,8 @@ import {composeCompany,loadCompanyMarkdown,type ProjectProfile,type DepartmentPl
 import {MarkdownAgentRegistry,systemPromptFor,type AgentDefinition} from "./md-agent-loader.js";
 import {SafeId} from "./ids.js";
 
-const Budget=z.object({maxProjectCost:z.number().nonnegative().optional(),maxTaskCost:z.number().nonnegative().optional(),maxTeamCost:z.record(z.string(),z.number().nonnegative()).default({}),maxAgentCost:z.record(z.string(),z.number().nonnegative()).default({}),approvalThreshold:z.number().nonnegative().optional()}).default({maxTeamCost:{},maxAgentCost:{}});\nconst CheckCommand=z.object({cmd:z.string().regex(/^[A-Za-z0-9._-]+$/),args:z.array(z.string()).default([])});
+const Budget=z.object({maxProjectCost:z.number().nonnegative().optional(),maxTaskCost:z.number().nonnegative().optional(),maxTeamCost:z.record(z.string(),z.number().nonnegative()).default({}),maxAgentCost:z.record(z.string(),z.number().nonnegative()).default({}),approvalThreshold:z.number().nonnegative().optional()}).default({maxTeamCost:{},maxAgentCost:{}});
+const CheckCommand=z.object({cmd:z.string().regex(/^[A-Za-z0-9._-]+$/),args:z.array(z.string()).default([])});
 export const ProjectBrief=z.object({
  projectId:SafeId,objective:z.string().min(10),
  capabilities:z.array(z.enum(["backend","web-ui","mobile","deployment","security-critical","performance-critical"])).min(1),
