@@ -70,6 +70,28 @@ Add to a brief: `workspacePath`, `checks`, `gates` (`typecheck`, `unit-tests`, `
 ## Scheduling and observability
 An event-driven DAG scheduler (no polling): critical-path priority with aging, per-project and per-provider concurrency, backpressure, work stealing between eligible providers, cooldown waits for rate-limited providers, bounded retries only for provider failures. Runs report queue wait, task latency, provider utilisation, retries, throughput and token/cost usage. `npm run status -- <project> --json` (or without `--json` for a loopback API: `/status`, `/tasks`, `/telemetry`, `/executions`) shows phase, running/queued tasks, providers, elapsed time, usage, retries, blockers and the final verdict.
 
+## Using Claude Code as the CompanySWAI Operator
+```bash
+cd CompanySWAI
+claude
+```
+Then talk normally: *"open project xweb"*, *"how is the project?"*, *"who is doing what?"*, *"why is QA waiting?"*, *"show the latest handoff"*, *"logs of task T-31"*, *"how long is left?"*, *"stop safely"*, *"resume"*, *"do publish first"*. The root `CLAUDE.md` makes Claude Code the **operator / human interface**: it selects the project, reads CompanySWAI's state, summarises it, relays approvals and dispatches commands. **CompanySWAI stays the execution engine** (planner, scheduler, agents, reviewer, QA, memory, repo, checkpoint/resume); Claude never implements, reviews or tests the project itself and never edits `.companyswai/`.
+
+The same information is available without Claude Code (`--json` on any command; the project may be omitted only when exactly one exists):
+
+| Command (`npm run operator -- …`) | Shows |
+|---|---|
+| `projects` · `status <p>` | known projects · what is RUNNING / READY / WAITING / BLOCKED, next steps, ETA (only as an ESTIMATE), usage |
+| `agents <p> [--agent role]` · `tasks <p> [--state S]` | per-agent state, current task, outputs, pending handoffs · every task with its state |
+| `task <p> <task> [--evidence]` | one task; `--evidence` adds input/output artifacts, handoffs, decisions, gates, git commits (checked read-only), execution attempts, log tail |
+| `handoffs <p> [task] [--latest]` | FROM, TO, task, input, output, decisions, evidence, blockers, next expected action (agents communicate through artifacts, not chat) |
+| `blockers <p>` · `reviews <p>` · `qa <p>` · `usage <p>` | why work is not moving · review verdicts and code gates · requirement→test results and QA rework · tokens, known cost, retries |
+| `logs <p> [task] [--agent role] [--tail N] [--full]` | concise latest events; `--full` adds raw model output (credentials are always masked) |
+| `stop <p>` · `resume <p>` | cooperative stop between steps (nothing is killed; every artifact and checkpoint is kept) · continue from the persisted plan and execution log (finished work is never re-run; `--dry-run`, `--runtime`, `--max-parallel`, `--supervise` as for `company`) |
+| `priority <p> <task> [--apply]` | preview/apply a higher scheduling priority for a task and its unfinished upstream tasks, via the plan's own `priority` field (refused while an engine runs; dependencies untouched) |
+
+Progress is a count ("6/10 tasks done"), never an invented percentage. Exit codes: `0` ok, `1` error, `2` usage or ambiguous project.
+
 ## Budget and approvals
 Limits per project, department, task and agent, reserved while calls are in flight; unknown prices fail closed on metered profiles; `approvalThreshold` per task and `projectApprovalThreshold` for the whole estimated project need a persisted approval (`npm run approve -- <project> <task|project-approval>`). An estimate that already exceeds the budget stops before any model call.
 

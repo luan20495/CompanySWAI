@@ -1,4 +1,4 @@
-import {readFile} from "node:fs/promises";
+import {readdir,readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {writeFileAtomic} from "./fs-atomic.js";
 import {z} from "zod";
@@ -17,6 +17,16 @@ class JsonStore<T>{
  private path(projectId:string,id:string){return join(this.root,projectId,id+".json");}
  async save(projectId:string,id:string,value:unknown){const parsed=this.schema.parse(value);const path=this.path(projectId,id);await writeFileAtomic(path,JSON.stringify(parsed,null,2));return parsed;}
  async load(projectId:string,id:string){try{return this.schema.parse(JSON.parse(await readFile(this.path(projectId,id),"utf8")));}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw error;}}
+ /** Read-only listing for operators. Unreadable or schema-invalid files are skipped, never repaired or deleted. Oldest first. */
+ async list(projectId:string):Promise<T[]>{
+  const dir=join(this.root,SafeId.parse(projectId));
+  let names:string[];
+  try{names=(await readdir(dir)).filter(name=>name.endsWith(".json")).sort();}
+  catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return [];throw error;}
+  const out:T[]=[];
+  for(const name of names){try{out.push(this.schema.parse(JSON.parse(await readFile(join(dir,name),"utf8"))));}catch{/* torn or foreign file */}}
+  return out.sort((a,b)=>String((a as {createdAt?:string}).createdAt??"").localeCompare(String((b as {createdAt?:string}).createdAt??"")));
+ }
 }
 export class FileArtifactStore extends JsonStore<ArtifactValue>{constructor(root=".companyswai/artifacts"){super(root,Artifact);}}
 export class FileDecisionStore extends JsonStore<DecisionValue>{constructor(root=".companyswai/decisions"){super(root,Decision);}}

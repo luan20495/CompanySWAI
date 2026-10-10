@@ -2,7 +2,7 @@
  * Run metrics, collected as events happen (no polling): queue wait, task latency, provider utilisation,
  * retries, throughput and token/cost usage.
  */
-export type TaskOutcome="DONE"|"PAUSED"|"APPROVAL_REQUIRED"|"FAILED";
+export type TaskOutcome="DONE"|"PAUSED"|"APPROVAL_REQUIRED"|"FAILED"|"STOPPED";
 type Stat={count:number;totalMs:number;maxMs:number};
 const stat=():Stat=>({count:0,totalMs:0,maxMs:0});
 const add=(s:Stat,ms:number)=>{s.count++;s.totalMs+=ms;s.maxMs=Math.max(s.maxMs,ms);};
@@ -10,7 +10,7 @@ const summary=(s:Stat)=>({count:s.count,avgMs:s.count?Math.round(s.totalMs/s.cou
 
 export class RunMetrics{
  private started=Date.now();private ready=new Map<string,number>();private began=new Map<string,number>();
- private queueWait=stat();private latency=stat();private outcomes:Record<TaskOutcome,number>={DONE:0,PAUSED:0,APPROVAL_REQUIRED:0,FAILED:0};
+ private queueWait=stat();private latency=stat();private outcomes:Record<TaskOutcome,number>={DONE:0,PAUSED:0,APPROVAL_REQUIRED:0,FAILED:0,STOPPED:0};
  private busy=new Map<string,{busyMs:number;runs:number;maxConcurrency:number}>();
  retries=0;failovers=0;capacityWaits=0;private tokensIn=0;private tokensOut=0;private cost=0;private subscriptionRuns=0;
  constructor(private now:()=>number=Date.now){this.started=now();}

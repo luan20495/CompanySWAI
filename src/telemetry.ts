@@ -50,7 +50,7 @@ export function buildProjectStatus(projectId:string,events:TelemetryEvent[],reco
  for(const e of runEvents){
   if(e.type==="task.started"&&e.taskId)started.set(e.taskId,e);
   if(e.type==="task.finished"&&e.taskId){started.delete(e.taskId);const outcome=e.detail??"";
-   if(outcome==="DONE")done.add(e.taskId);else if(outcome==="FAILED")failed.add(e.taskId);else paused.add(e.taskId);}
+   if(outcome==="DONE")done.add(e.taskId);else if(outcome==="FAILED")failed.add(e.taskId);else if(outcome!=="STOPPED")paused.add(e.taskId);}
   if(e.type==="task.blocked"&&e.detail)blockers.push((e.taskId??"")+": "+e.detail);
   if(e.type==="provider.retry")retries++;
   if(e.type==="provider.failover")failovers++;

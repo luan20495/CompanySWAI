@@ -22,6 +22,8 @@ export type AutonomousOptions={
  state:CompanyState;selector:ProviderSelector;dryRun?:boolean;
  /** Recompile a changed brief over an existing run instead of refusing. Finished tasks still count as finished. */
  replan?:boolean;
+ /** Resume from the plan already persisted for this project: the supplied plan IS the stored one, so the input-change check is skipped. */
+ resumeStored?:boolean;
  orchestrator?:OrchestratorOptions;
  approvalWait?:{pollMs:number;timeoutMs:number};
  knownRoles?:string[];knownSkills?:string[];
@@ -53,7 +55,7 @@ export async function runAutonomous(input:AutonomousInput,options:AutonomousOpti
 
  // ---------------------------------------------------------------- PLAN
  let plan=await runs.loadPlan(projectId);
- if(run&&plan&&run.briefHash&&run.briefHash!==inputHash&&!options.replan)throw new PlanChangedError(projectId);
+ if(run&&plan&&run.briefHash&&run.briefHash!==inputHash&&!options.replan&&!options.resumeStored)throw new PlanChangedError(projectId);
  if(!run||!plan||(options.replan&&run.briefHash!==inputHash)){
   if(asBrief){
    const prior=await state.retrospectives.load(projectId);
@@ -116,12 +118,15 @@ export async function runAutonomous(input:AutonomousInput,options:AutonomousOpti
  // After EXECUTE finished earlier this is a cheap pass that skips every completed task and keeps the summary current.
  const summary=await orchestrator().run(settled);
  const parked=Boolean(summary.paused.length||summary.approvalRequired.length||summary.waiting.length||summary.failed.length);
- if(parked)run=await runs.save({...run!,phase:"EXECUTE",stopped:undefined});
- else if(!done("EXECUTE"))await complete("EXECUTE");
+ if(parked)run=await runs.save({...run!,phase:"EXECUTE",stopped:summary.stopped?"stopped by operator: "+summary.stopped:undefined});
+ else{
+  if(run!.stopped)run=await runs.save({...run!,stopped:undefined});
+  if(!done("EXECUTE"))await complete("EXECUTE");
+ }
 
  // ---------------------------------------------------------------- FINALIZE
  const records=await state.executions.list(projectId),trace=await state.traceability.load(projectId);
- const final=computeFinalStatus(settled,summary,records,trace);
+ const computed=computeFinalStatus(settled,summary,records,trace),final=summary.stopped?{...computed,reasons:["stopped by operator: "+summary.stopped,...computed.reasons]}:computed;
  await state.memory.upsert(projectId,"STATUS.md","final","FINAL STATUS — "+final.status,[...final.reasons.map(r=>"- "+r),...(final.risks.length?["","Risks:",...final.risks.map(r=>"- "+r)]:[]),"","QA: "+final.qa.status].join("\n"));
  run=await runs.save({...run!,final});
  if(!parked&&!done("FINALIZE"))await complete("FINALIZE");
@@ -131,7 +136,7 @@ export async function runAutonomous(input:AutonomousInput,options:AutonomousOpti
  await closeProject(state,summary,{dryRun:options.dryRun,knownRoles:options.knownRoles,knownSkills:options.knownSkills,plan:settled,observe:!parked&&!done("RETROSPECTIVE")});
  if(!parked&&!done("RETROSPECTIVE"))await complete("RETROSPECTIVE");
  if(!parked&&!done("DONE"))await complete("DONE");
- return {projectId,phase:run!.phase,plan:settled,estimate,summary,final,notes:run!.notes};
+ return {projectId,phase:run!.phase,stopped:summary.stopped,plan:settled,estimate,summary,final,notes:run!.notes};
 }
 export type {RunStateValue};
 

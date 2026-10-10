@@ -20,7 +20,8 @@ import {defaultConnectorRegistry,gatherResearch,renderRetrieved,type ConnectorRe
 
 export type ProjectRunSummary={
  projectId:string;runId:string;completed:string[];paused:string[];approvalRequired:string[];failed:string[];waiting:string[];skipped:string[];
- waves:number;reviewRuns:number;revisions:number;disagreements:number;failovers:number;qaReworkRounds:number;budget:BudgetReport;metrics:MetricsSnapshot;
+ /** Set when an operator stop request ended this run early; unfinished tasks wait and resume from the log. */
+ stopped?:string;waves:number;reviewRuns:number;revisions:number;disagreements:number;failovers:number;qaReworkRounds:number;budget:BudgetReport;metrics:MetricsSnapshot;
 };
 export type OrchestratorOptions={
  /** When set, a task that needs approval waits (polling the persisted approval) instead of ending the run. */
@@ -84,9 +85,41 @@ export function pickNext<T extends {id:string;priority:number}>(candidates:T[],r
  return best;
 }
 
+/** Number of independent reviewers a task has (0 when it has no review). */
+export function reviewSlotCount(task:TaskPlanValue){return task.review?Math.max(1,task.review.slots.length):0;}
+/**
+ * Derives a task's position from the persisted execution log alone. This is the single definition of "complete": the
+ * scheduler resumes from it and the operator interface reports from it, so what is shown can never disagree with what runs.
+ */
+export function taskHistory(records:ExecutionRecordValue[],task:TaskPlanValue,plan:ProjectPlanValue,rework:ReworkRequest[]=[]){
+ const indexed=records.map((record,index)=>({record,index}));
+ const makers=indexed.filter(x=>x.record.taskId===task.id&&x.record.status==="SUCCEEDED"),maker=makers.at(-1);
+ const reviews=indexed.filter(x=>x.record.taskId.startsWith(task.id+"--review-")&&x.record.status==="SUCCEEDED");
+ const since=reviews.filter(x=>maker&&x.index>maker.index).map(x=>x.record);
+ // QA rework: a request is pending until the task has a maker success newer than the version it had when asked.
+ const requests=rework.filter(r=>r.taskId===task.id),latest=requests.at(-1),pendingRequest=latest&&makers.length===latest.afterVersion?latest:undefined;
+ // Review rounds are budgeted per epoch: reviews of versions before the last rework do not count against the reworked version.
+ const satisfied=requests.filter(r=>makers.length>r.afterVersion).at(-1),epochStart=satisfied?makers[satisfied.afterVersion].index:0;
+ const epochReviews=reviews.filter(x=>x.index>=epochStart);
+ const slots=reviewSlotCount(task),verdictBySlot=new Map<number,"PASS"|"CHANGES_REQUIRED">();
+ for(const r of since)verdictBySlot.set(r.slot??0,parseReviewVerdict(r.output)??"CHANGES_REQUIRED");
+ const reviewed=slots>0&&[...Array(slots).keys()].every(k=>verdictBySlot.has(k));
+ const verdicts=[...verdictBySlot.values()],allPass=reviewed&&verdicts.every(v=>v==="PASS"),anyChanges=verdicts.includes("CHANGES_REQUIRED");
+ const checksGate=Boolean(task.review?.gates.includes("checks")&&plan.workspace&&task.requiredGates.length);
+ const gatesOk=!checksGate||Boolean(maker&&(maker.record.evidence.length>0||maker.record.gates.some(g=>g.status==="PASS")));
+ return {
+  maker:maker?.record,makerVersions:makers.length,reviewsTotal:epochReviews.length,since,pendingRequest,
+  missingSlots:[...Array(slots).keys()].filter(k=>!verdictBySlot.has(k)),
+  disagreement:verdicts.includes("PASS")&&anyChanges,
+  complete:Boolean(maker&&!pendingRequest&&(!task.review||(allPass&&gatesOk))),
+  needsRevision:Boolean(task.review&&maker&&reviewed&&anyChanges),
+  gatesFailed:Boolean(maker&&task.review&&allPass&&!gatesOk)
+ };
+}
+
 export class ProjectOrchestrator{
  private runner:TaskRunner;private capacity=new KeyedSemaphore();private budgetGate=new Mutex();private inFlight=new Set<InFlightCost>();
- private retrieval=new Map<string,Promise<ResearchDocument[]>>();private slots=new Signal();private metrics=new RunMetrics();private telemetry:Promise<unknown>=Promise.resolve();private runId="";
+ private retrieval=new Map<string,Promise<ResearchDocument[]>>();private slots=new Signal();private metrics=new RunMetrics();private telemetry:Promise<unknown>=Promise.resolve();private runId="";private stopReason?:string;
  constructor(private selectProvider:ProviderSelector,private state=new CompanyState(),private options:OrchestratorOptions={}){
   this.runner=new TaskRunner(state);
  }
@@ -116,7 +149,7 @@ export class ProjectOrchestrator{
   return {preferredProvider:target.provider,preferredModel:target.model,policy:target.routing,requireFreeSlot:true,demand:{capabilities:target.capabilities,estimatedInputTokens:target.estimatedInputTokens,estimatedOutputTokens:target.estimatedOutputTokens,maxCost:target.maxCost,minContextWindow:target.minContextWindow,minQualityTier:target.minQualityTier},exclude:exclude.map(item=>({provider:item.profile.provider,model:item.profile.model,profileId:item.profile.id}))};
  }
  private downstream(plan:ProjectPlanValue,taskId:string){return plan.tasks.filter(t=>t.dependencies.includes(taskId)).map(t=>({taskId:t.id,role:t.agentRole}));}
- private slotCount(task:TaskPlanValue){return task.review?Math.max(1,task.review.slots.length):0;}
+ private slotCount(task:TaskPlanValue){return reviewSlotCount(task);}
  private slotConfig(task:TaskPlanValue,slot:number){
   const review=task.review!,configured=review.slots[slot];
   return configured??{lens:undefined,system:review.system,contract:review.contract};
@@ -124,31 +157,7 @@ export class ProjectOrchestrator{
  private reviewTaskId(task:TaskPlanValue,version:number,slot:number){return task.id+"--review-"+version+"-"+slot;}
 
  /** Derives a task's position from the persisted execution log alone; this is what makes resume deterministic. */
- private history(records:ExecutionRecordValue[],task:TaskPlanValue,plan:ProjectPlanValue,rework:ReworkRequest[]=[]){
-  const indexed=records.map((record,index)=>({record,index}));
-  const makers=indexed.filter(x=>x.record.taskId===task.id&&x.record.status==="SUCCEEDED"),maker=makers.at(-1);
-  const reviews=indexed.filter(x=>x.record.taskId.startsWith(task.id+"--review-")&&x.record.status==="SUCCEEDED");
-  const since=reviews.filter(x=>maker&&x.index>maker.index).map(x=>x.record);
-  // QA rework: a request is pending until the task has a maker success newer than the version it had when asked.
-  const requests=rework.filter(r=>r.taskId===task.id),latest=requests.at(-1),pendingRequest=latest&&makers.length===latest.afterVersion?latest:undefined;
-  // Review rounds are budgeted per epoch: reviews of versions before the last rework do not count against the reworked version.
-  const satisfied=requests.filter(r=>makers.length>r.afterVersion).at(-1),epochStart=satisfied?makers[satisfied.afterVersion].index:0;
-  const epochReviews=reviews.filter(x=>x.index>=epochStart);
-  const slots=this.slotCount(task),verdictBySlot=new Map<number,"PASS"|"CHANGES_REQUIRED">();
-  for(const r of since)verdictBySlot.set(r.slot??0,parseReviewVerdict(r.output)??"CHANGES_REQUIRED");
-  const reviewed=slots>0&&[...Array(slots).keys()].every(k=>verdictBySlot.has(k));
-  const verdicts=[...verdictBySlot.values()],allPass=reviewed&&verdicts.every(v=>v==="PASS"),anyChanges=verdicts.includes("CHANGES_REQUIRED");
-  const checksGate=Boolean(task.review?.gates.includes("checks")&&plan.workspace&&task.requiredGates.length);
-  const gatesOk=!checksGate||Boolean(maker&&(maker.record.evidence.length>0||maker.record.gates.some(g=>g.status==="PASS")));
-  return {
-   maker:maker?.record,makerVersions:makers.length,reviewsTotal:epochReviews.length,since,pendingRequest,
-   missingSlots:[...Array(slots).keys()].filter(k=>!verdictBySlot.has(k)),
-   disagreement:verdicts.includes("PASS")&&anyChanges,
-   complete:Boolean(maker&&!pendingRequest&&(!task.review||(allPass&&gatesOk))),
-   needsRevision:Boolean(task.review&&maker&&reviewed&&anyChanges),
-   gatesFailed:Boolean(maker&&task.review&&allPass&&!gatesOk)
-  };
- }
+ private history(records:ExecutionRecordValue[],task:TaskPlanValue,plan:ProjectPlanValue,rework:ReworkRequest[]=[]){return taskHistory(records,task,plan,rework);}
  /** A model response that was paid for but never finalized (crash between provider return and persistence). */
  private unfinalized(records:ExecutionRecordValue[],taskId:string){
   const terminal=new Set(records.filter(r=>r.status==="SUCCEEDED"||r.status==="FAILED").map(r=>r.id));
@@ -364,10 +373,25 @@ export class ProjectOrchestrator{
   return true;
  }
 
- /** Advances one task from whatever state the log says it is in until it is done, parked or failed. */
- private async advance(plan:ProjectPlanValue,task:TaskPlanValue,counters:Counters):Promise<"DONE"|Pause>{
+ /**
+  * Cooperative stop: an operator's stop request for THIS run is honoured between task steps, never inside a model call or a
+  * repository transaction. Once seen it is sticky, so nothing new starts; in-flight steps finish and are fully persisted.
+  */
+ private async honorStop(projectId:string){
+  if(this.stopReason)return true;
+  const request=await this.state.stops.load(projectId);
+  if(!request||request.runId!==this.runId)return false;
+  this.stopReason=request.reason||"stop requested by "+request.requestedBy;
+  this.emit(projectId,"run.stop-requested",{detail:this.stopReason});
+  await this.state.memory.recordStatus(projectId,"operator","STOP_REQUESTED",this.stopReason);
+  return true;
+ }
+ /** Advances one task from whatever state the log says it is in until it is done, parked, stopped or failed. */
+ private async advance(plan:ProjectPlanValue,task:TaskPlanValue,counters:Counters):Promise<"DONE"|"STOPPED"|Pause>{
   for(;;){
    const records=await this.state.executions.list(plan.projectId),rework=await this.state.rework.list(plan.projectId),state=this.history(records,task,plan,rework);
+   // A step that just finished is already persisted; only unfinished work is parked.
+   if(!(state.complete&&!state.pendingRequest)&&await this.honorStop(plan.projectId))return "STOPPED";
    if(state.pendingRequest&&state.maker){
     const result=await this.reworkRun(plan,task,state.pendingRequest,state.maker,records,counters);
     if(typeof result==="string")return result;
@@ -426,7 +450,7 @@ export class ProjectOrchestrator{
   await this.state.memory.init(plan);
   // Isolated worktrees left by a crashed run belong to nobody: remove them before starting.
   if(plan.workspace?.isolation==="worktree")await new WorktreeManager(plan.workspace.path,join(this.state.root,"worktrees")).cleanupStale(new Set(),15*60*1000);
-  this.runId=randomUUID();this.metrics=new RunMetrics(this.options.now);
+  this.runId=randomUUID();this.stopReason=undefined;this.metrics=new RunMetrics(this.options.now);
   this.emit(plan.projectId,"run.started",{detail:plan.mode});
   const states=new Map<string,string>(),skipped=new Set<string>(),counters:Counters={reviewRuns:0,revisions:0,disagreements:0,failovers:0};
   let completed=new Set<string>(),paused=new Set<string>(),approvalRequired=new Set<string>(),failed=new Set<string>(),pending=new Map<string,TaskPlanValue>(),waves=0,firstRound=true;
@@ -460,7 +484,8 @@ export class ProjectOrchestrator{
       await this.state.memory.recordStatus(plan.projectId,task.id,"DONE");
       const checkpoint=await this.state.checkpoints.load(plan.projectId,task.id);
       if(checkpoint)await this.state.checkpoints.save(plan.projectId,{...checkpoint,at:new Date().toISOString(),status:"DONE",remaining:[]});
-     }else if(result==="PAUSED"){outcome="PAUSED";paused.add(task.id);states.set(task.id,"PAUSED_CAPACITY");}
+     }else if(result==="STOPPED"){outcome="STOPPED";pending.set(task.id,task);states.set(task.id,"STOPPED");}
+     else if(result==="PAUSED"){outcome="PAUSED";paused.add(task.id);states.set(task.id,"PAUSED_CAPACITY");}
      else{outcome="APPROVAL_REQUIRED";approvalRequired.add(task.id);states.set(task.id,"APPROVAL_REQUIRED");}
     }catch(error){outcome="FAILED";failed.add(task.id);states.set(task.id,"BLOCKED");await this.fail(plan,task,error);}
     this.metrics.taskFinished(task.id,outcome);this.emit(plan.projectId,"task.finished",{taskId:task.id,detail:outcome});
@@ -469,7 +494,7 @@ export class ProjectOrchestrator{
    // Event-driven DAG scheduler: a task starts the moment its dependencies are done and a project slot is free.
    await new Promise<void>(resolve=>{
     const tick=()=>{
-     while(running.size<maxParallel){
+     while(running.size<maxParallel&&!this.stopReason){
       const ready=[...pending.values()].filter(t=>t.dependencies.every(dep=>completed.has(dep)));
       for(const task of ready)if(!readyAt.has(task.id)){readyAt.set(task.id,this.now());this.metrics.taskReady(task.id);}
       const next=pickNext(ready,readyAt,this.now(),agingMs);
@@ -495,8 +520,9 @@ export class ProjectOrchestrator{
   for(const id of waiting)states.set(id,"WAITING");
   await syncPlan();
   const budget=budgetReport(plan.budget,await this.state.executions.list(plan.projectId));
-  this.emit(plan.projectId,"run.finished",{detail:failed.size?"failed":paused.size||approvalRequired.size||waiting.length?"parked":"done"});
+  if(this.stopReason)await this.state.stops.clear(plan.projectId);
+  this.emit(plan.projectId,"run.finished",{detail:failed.size?"failed":this.stopReason?"stopped":paused.size||approvalRequired.size||waiting.length?"parked":"done"});
   await this.telemetry;
-  return {projectId:plan.projectId,runId:this.runId,completed:[...completed],paused:[...paused],approvalRequired:[...approvalRequired],failed:[...failed],waiting,skipped:[...skipped],waves,...counters,qaReworkRounds:await this.state.rework.rounds(plan.projectId),budget,metrics:this.metrics.snapshot()};
+  return {projectId:plan.projectId,runId:this.runId,completed:[...completed],paused:[...paused],approvalRequired:[...approvalRequired],failed:[...failed],waiting,skipped:[...skipped],waves,stopped:this.stopReason,...counters,qaReworkRounds:await this.state.rework.rounds(plan.projectId),budget,metrics:this.metrics.snapshot()};
  }
 }
