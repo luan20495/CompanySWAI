@@ -1,8 +1,15 @@
 ---
 name: testing
+version: 1.0.0
+description: Testing strategy rules: pyramid, risk-based coverage, deterministic tests and regression evidence.
 appliesTo: ["backend-engineer","frontend-engineer","mobile-engineer","qa-engineer","reviewer"]
 capabilities: []
 keywords: ["test strategy","tdd","coverage","e2e","end-to-end","test automation","regression","integration test","contract test"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Testing
 

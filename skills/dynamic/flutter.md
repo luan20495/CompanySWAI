@@ -1,9 +1,16 @@
 ---
 name: flutter
+version: 1.0.0
+description: Flutter/Dart engineering rules: state management, rendering performance and platform channels.
 appliesTo: ["mobile-engineer","reviewer","qa-engineer"]
 capabilities: []
 keywords: ["flutter","dart"]
 tags: ["flutter","dart"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Flutter
 

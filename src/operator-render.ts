@@ -49,6 +49,15 @@ export function renderTasks(tasks:TaskView[]){
  return ["TASKS",...tasks.map(t=>"- "+pad(t.id,iw)+pad(stateLabel(t.state),19)+pad(t.agentRole,w)+clip(t.title,44)+(t.state==="WAITING"?"  ← "+t.waitingOn.map(x=>x.taskId).join(","):"")+(t.state==="READY"||t.state==="RUNNING"?"  ["+t.stage+"]":""))].join("\n");
 }
 
+function renderSkillTrace(label:string,trace:TaskDetail["skillTrace"],names:string[]){
+ if(!trace)return names.length?[label+": "+names.join(", ")+" (no trace recorded)"]:[];
+ const lines=[label+": "+(trace.used.length?trace.used.length+" injected, "+trace.usedChars+"/"+trace.budgetChars+" chars":"none")];
+ for(const u of trace.used)lines.push("  - "+u.name+" v"+u.version+" ["+u.decision+", "+u.license+", risk "+u.riskLevel+"]  source: "+u.source+(u.sourceCommit?" @ "+u.sourceCommit.slice(0,12):"")+"\n    why: "+(u.matched.join(", ")||"-")+(u.references.length?"; references: "+u.references.join(", "):"")+(u.requiresExternalBinary.length?"; optional tools: "+u.requiresExternalBinary.join(", "):""));
+ for(const k of trace.skipped)lines.push("  - skipped "+k.name+": "+k.reason);
+ for(const w of trace.warnings)lines.push("  ! "+w);
+ return lines;
+}
+
 export function renderTask(detail:TaskDetail){
  const t=detail.task,lines=[
   "TASK: "+t.id+" — "+t.title,
@@ -56,6 +65,7 @@ export function renderTask(detail:TaskDetail){
   "STATE: "+stateLabel(t.state)+"   STAGE: "+t.stage+(t.reason?"\nWHY: "+t.reason:""),
   "DEPENDS ON: "+(t.dependencies.length?t.dependencies.join(", "):"nothing")+(t.waitingOn.length?"   (unfinished: "+t.waitingOn.map(w=>w.taskId+" "+w.state).join(", ")+")":""),
   "PRODUCES: "+(t.produces.join(", ")||"-"),
+  ...renderSkillTrace("SKILLS",detail.skillTrace,detail.skills),...renderSkillTrace("REVIEW SKILLS",detail.reviewSkillTrace,[]),
   "EXECUTIONS: "+t.attempts+" maker, "+t.reviewRuns+" review   VERSIONS: "+t.makerVersions+"   REVIEW: "+(t.reviewVerdicts.length?t.reviewVerdicts.map(v=>"slot "+v.slot+" "+v.verdict).join(", "):"none yet"),
   ...(t.running?["RUNNING: "+t.running.role+" — "+t.running.step+", "+duration(t.running.elapsedMs)+(t.running.provider?", "+t.running.provider+"/"+t.running.model:"")]:[]),
   ...(t.lastActivityAt?["LAST ACTIVITY: "+t.lastActivityAt]:[])
@@ -89,6 +99,7 @@ export function renderAgents(agents:AgentView[]){
   out.push("- "+pad(a.role,24)+pad(a.state,9)+(a.current?a.current.taskId+" — "+a.current.step+", "+duration(a.current.elapsedMs)+(a.current.provider?", "+a.current.provider+"/"+a.current.model:""):a.assignments.map(x=>x.taskId+(x.kind==="review"?" (review)":"")+" "+x.state+(x.step?" ("+x.step+")":"")).join(", ")||"no tasks"));
   if(a.waitingFor.length&&a.state!=="RUNNING")out.push("    waiting for: "+a.waitingFor.join(", "));
   if(a.pendingHandoffsIn.length)out.push("    pending handoff in: "+a.pendingHandoffsIn.map(h=>h.fromRole+"("+h.fromTask+") → "+h.forTask).join(", "));
+  if(a.skills.length)out.push("    skills: "+a.skills.map(k=>k.name+(k.version?" v"+k.version:"")+" ("+k.tasks.join(",")+")").join(", "));
   if(a.outputs.length)out.push("    produced: "+clip(a.outputs.join("; "),160));
   if(a.lastActivityAt)out.push("    last activity: "+a.lastActivityAt);
  }

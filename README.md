@@ -7,7 +7,7 @@ A local, **MD-first autonomous software company**. Markdown defines the company:
 |---|---|
 | `agents/AGENTS.md`, `agents/<agent>/{IDENTITY,RULES}.md` | the 11 agents: role, activation, skills, provider capabilities, artifacts, reviewer, output validators |
 | `skills/*.md` | permanent skills, loaded only into agents that declare them |
-| `skills/dynamic/*.md` | 15 specialist skills (security, performance, accessibility, database, distributed-systems, mobile-native, android, ios, flutter, frontend-performance, backend-reliability, devops, observability, testing, ux-research) injected only when task signals require them |
+| `skills/dynamic/*.md`, `skills/references/<skill>/*.md` | 25 specialist skills (15 native + 10 curated, see `docs/SKILLS-AUDIT.md`): metadata-driven registry (version, source commit, licence, roles, risk, needs), injected only when task signals, role policy, permissions and the context budget allow; references load on demand |
 | `company/COMPANY.md`, `WORKFLOW.md`, `QUALITY-GATES.md` | principles, workflow, gate prose |
 | `company/OUTPUT-CONTRACT.md`, `MEMORY.md` | the structured output contract; where outputs land in project memory |
 | `company/POLICY.md` | quality modes (FAST / BALANCED / MAX_QUALITY) and review levels (NORMAL / CRITICAL / HIGH_RISK) |
@@ -88,9 +88,13 @@ The same information is available without Claude Code (`--json` on any command; 
 | `blockers <p>` · `reviews <p>` · `qa <p>` · `usage <p>` | why work is not moving · review verdicts and code gates · requirement→test results and QA rework · tokens, known cost, retries |
 | `logs <p> [task] [--agent role] [--tail N] [--full]` | concise latest events; `--full` adds raw model output (credentials are always masked) |
 | `stop <p>` · `resume <p>` | cooperative stop between steps (nothing is killed; every artifact and checkpoint is kept) · continue from the persisted plan and execution log (finished work is never re-run; `--dry-run`, `--runtime`, `--max-parallel`, `--supervise` as for `company`) |
+| `skills [--role r]` · `skill <name>` | the skill catalogue (source, version, commit, licence, roles, risk, context cost, optional dependencies; no project needed) · one skill in detail. `task <p> <t>` shows why each skill was injected or skipped, `agents <p>` which skills an agent used |
 | `priority <p> <task> [--apply]` | preview/apply a higher scheduling priority for a task and its unfinished upstream tasks, via the plan's own `priority` field (refused while an engine runs; dependencies untouched) |
 
 Progress is a count ("6/10 tasks done"), never an invented percentage. Exit codes: `0` ok, `1` error, `2` usage or ambiguous project.
+
+## Skills
+Permanent roles never change; specialisation is **dynamic skills**. A skill is Markdown with registry metadata (`docs/SKILLS-AUDIT.md` lists the audited sources and the selected set). Resolution is `task signals → role policy → permissions (network / browser) → overlap group → cap → context budget`, so a task receives the minimum sufficient skills (a backend task never gets browser or UX skills). External skills are untrusted input: they are distilled, pinned to a source commit, licence-checked, scanned (unsafe commands, secrets, prompt-injection text), size-limited and never executed. Each execution record stores its `skillTrace`, so reviewers and QA can see what shaped the work. Tooling: `npm run skills -- list|show <skill>|validate|route <brief.json>`; optional scanners (gitleaks, semgrep, trufflehog, trivy, grype) are detected, never installed, and reported `NOT RUN` when absent.
 
 ## Budget and approvals
 Limits per project, department, task and agent, reserved while calls are in flight; unknown prices fail closed on metered profiles; `approvalThreshold` per task and `projectApprovalThreshold` for the whole estimated project need a persisted approval (`npm run approve -- <project> <task|project-approval>`). An estimate that already exceeds the budget stops before any model call.

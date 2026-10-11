@@ -2,6 +2,7 @@ import {z} from "zod";
 import {SafeId} from "./ids.js";
 import {QualityMode,ReviewLevel,RoutingPolicy} from "./company.js";
 import {ConnectorConfig} from "./research-connectors.js";
+import {SkillTrace} from "./skill-registry.js";
 
 const Selection=z.object({
  provider:z.string().min(1).optional(),
@@ -34,7 +35,9 @@ const ReviewPlan=Selection.and(z.object({
  /** Gates (checks, qa, security) that must hold before the reviewed work counts as accepted. */
  gates:z.array(z.string()).default([]),
  /** One entry per independent reviewer; empty means a single reviewer using system/contract above. */
- slots:z.array(ReviewSlot).default([])
+ slots:z.array(ReviewSlot).default([]),
+ /** Which specialist skills the reviewers were given and why. */
+ skillTrace:SkillTrace.optional()
 }));
 
 const TaskPlan=Selection.and(z.object({
@@ -49,6 +52,8 @@ const TaskPlan=Selection.and(z.object({
  risk:Risk.default("medium"),
  /** Names of the dynamic specialist skills injected into this task's system prompt. */
  skills:z.array(z.string()).default([]),
+ /** Why each skill was (or was not) injected: versions, sources, matched signals, skipped reasons, context budget. */
+ skillTrace:SkillTrace.optional(),
  /** Code gates this task must pass when it delivers code. */
  requiredGates:z.array(z.string()).default([]),
  /** True when this task's deliverable is code in the project workspace. */

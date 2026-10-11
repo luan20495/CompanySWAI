@@ -1,8 +1,15 @@
 ---
 name: mobile-native
+version: 1.0.0
+description: Cross-platform native mobile rules: offline, permissions, battery, release channels and device matrix.
 appliesTo: ["tech-lead","mobile-engineer","ux-ui-designer","reviewer","qa-engineer"]
 capabilities: ["mobile"]
 keywords: ["offline","push notification","background","battery","app store","play store","native"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Mobile native concerns
 

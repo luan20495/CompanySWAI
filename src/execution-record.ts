@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {SafeId} from "./ids.js";
+import {SkillTrace} from "./skill-registry.js";
 
 export const ExecutionRecord=z.object({
  id:z.string(),projectId:SafeId,taskId:SafeId,agentRole:z.string(),department:z.string().default("general"),provider:z.string(),model:z.string(),
@@ -9,6 +10,8 @@ export const ExecutionRecord=z.object({
  inputTokens:z.number().int().nonnegative().default(0),outputTokens:z.number().int().nonnegative().default(0),estimatedCost:z.number().nonnegative().optional(),actualCost:z.number().nonnegative().optional(),
  billing:z.enum(["metered","subscription"]).default("metered"),
  profileId:z.string().optional(),/** Repository HEAD the model saw when this step was built (isolated worktrees start from it, so overlapping edits conflict instead of silently overwriting). */baseSha:z.string().optional(),slot:z.number().int().nonnegative().optional(),contextRefs:z.array(z.string()).default([]),
+ /** Which specialist skills (version, source, licence, matched signals, context cost) shaped this execution; reviewers and QA can inspect it. */
+ skillTrace:SkillTrace.optional(),
  gates:z.array(z.object({name:z.string(),status:z.enum(["PASS","FAIL","NOT_CONFIGURED","NOT_APPLICABLE"]),detail:z.string().optional()})).default([]),changedFiles:z.array(z.string()).default([]),commitSha:z.string().optional(),evidence:z.array(z.string()).default([]),error:z.string().optional()
 });
 export type ExecutionRecordValue=z.infer<typeof ExecutionRecord>;

@@ -12,6 +12,7 @@ import {MEMORY_FILES} from "./project-memory.js";
 import {containsSecret} from "./secrets.js";
 import {isKnownValidator} from "./validators.js";
 import {SkillCatalog} from "./skill-selector.js";
+import {catalogView} from "./skills-view.js";
 
 const problems:string[]=[],check=(ok:boolean,message:string)=>{if(!ok)problems.push(message);};
 
@@ -98,4 +99,4 @@ for(const entry of [".env",".companyswai/","config/providers.json","node_modules
 check(existsSync(join("agents","AGENTS.md")),"agents/AGENTS.md is missing");
 
 if(problems.length){console.error(JSON.stringify({status:"failed",problems},null,2));process.exit(1);}
-console.log(JSON.stringify({status:"ok",agents:agents.map(a=>a.id),exampleTasks:plan.tasks.map(t=>t.id),providerProfiles:profiles.map(p=>p.id),dynamicSkills:dynamicSkills.map(s=>s.name),trackedFilesScanned:tracked.length},null,2));
+console.log(JSON.stringify({status:"ok",agents:agents.map(a=>a.id),exampleTasks:plan.tasks.map(t=>t.id),providerProfiles:profiles.map(p=>p.id),dynamicSkills:dynamicSkills.map(s=>s.name),optionalDependencies:(await catalogView({catalog:new SkillCatalog()})).optionalDependencies.map(d=>d.name+": "+(d.available?"installed":"missing (optional)")),trackedFilesScanned:tracked.length},null,2));

@@ -1,8 +1,15 @@
 ---
 name: observability
+version: 1.0.0
+description: Observability rules: structured logs, metrics, traces, SLOs and actionable alerts.
 appliesTo: ["tech-lead","backend-engineer","devops-sre","reviewer","qa-engineer"]
 capabilities: ["deployment"]
 keywords: ["logging","metrics","tracing","monitoring","alerting","telemetry","observability","dashboard","opentelemetry"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Observability
 

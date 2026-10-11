@@ -1,8 +1,15 @@
 ---
 name: ios
+version: 1.0.0
+description: Native iOS engineering rules: Swift concurrency, lifecycle, permissions and App Store delivery.
 appliesTo: ["mobile-engineer","reviewer","qa-engineer"]
 capabilities: []
 keywords: ["ios","swift","swiftui","uikit","xcode","app store","iphone","ipad"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # iOS
 

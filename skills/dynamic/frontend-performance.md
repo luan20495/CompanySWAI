@@ -1,8 +1,15 @@
 ---
 name: frontend-performance
+version: 1.0.0
+description: Frontend performance rules: Core Web Vitals, bundle size, rendering and caching.
 appliesTo: ["frontend-engineer","ux-ui-designer","reviewer"]
 capabilities: []
 keywords: ["core web vitals","lcp","cls","inp","bundle size","lighthouse","page speed","web performance","ssr","rendering","time to interactive"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Frontend performance
 

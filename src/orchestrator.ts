@@ -202,7 +202,7 @@ export class ProjectOrchestrator{
  private async makerRunBase(plan:ProjectPlanValue,task:TaskPlanValue,prompt:string,manifest:ContextEntry[],inputRefs=task.inputRefs):Promise<RunTask>{
   // Isolated work starts from the repository state the model is shown now, so a later integration detects overlapping edits.
   const baseSha=plan.workspace?.isolation==="worktree"?(await new LocalRepoWorkspace(plan.workspace.path).git(["rev-parse","HEAD"])).stdout.trim():undefined;
-  return {baseSha,projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",produces:task.produces,requiredGates:task.requiredGates,deliversCode:task.deliversCode,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
+  return {baseSha,projectId:plan.projectId,taskId:task.id,agentRole:task.agentRole,department:task.department,kind:"maker",skillTrace:task.skillTrace,produces:task.produces,requiredGates:task.requiredGates,deliversCode:task.deliversCode,inputRefs,system:task.system,prompt,maxTokens:task.maxTokens,contract:task.contract,validationContext:await this.validationContext(plan,task.contract),contextRefs:this.refs(manifest),workspace:plan.workspace,handoffTo:this.downstream(plan,task.id)};
  }
 
  private async waitForApproval(projectId:string,key:string,cost:number){
@@ -424,7 +424,7 @@ export class ProjectOrchestrator{
    const runs=state.missingSlots.map(slot=>async()=>{
     const config=this.slotConfig(task,slot),previous=records.filter(r=>r.taskId.startsWith(task.id+"--review-")&&(r.slot??0)===slot&&r.status==="SUCCEEDED").at(-1)?.output;
     const built=reviewContext({task,maker:state.maker!,upstream,limit:this.options.maxUpstreamChars??DEFAULT_UPSTREAM_CHARS,artifactLimit:this.options.maxReviewArtifactChars??DEFAULT_REVIEW_ARTIFACT_CHARS,slot,slots,previousFindings:previous});
-    const run:RunTask={projectId:plan.projectId,taskId:this.reviewTaskId(task,version,slot),agentRole:review.role,department:review.department,kind:"review",reviewedTaskId:task.id,slot,inputRefs:[...task.inputRefs,"execution:"+task.id],system:config.system,prompt:built.prompt,maxTokens:review.maxTokens,contract:config.contract,contextRefs:this.refs(built.manifest)};
+    const run:RunTask={projectId:plan.projectId,taskId:this.reviewTaskId(task,version,slot),agentRole:review.role,department:review.department,kind:"review",skillTrace:review.skillTrace,reviewedTaskId:task.id,slot,inputRefs:[...task.inputRefs,"execution:"+task.id],system:config.system,prompt:built.prompt,maxTokens:review.maxTokens,contract:config.contract,contextRefs:this.refs(built.manifest)};
     return this.execute(plan,review,run,task.id,counters);
    });
    const settled=await Promise.allSettled(runs.map(start=>start()));

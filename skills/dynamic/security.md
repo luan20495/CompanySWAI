@@ -1,8 +1,15 @@
 ---
 name: security
+version: 1.0.0
+description: Security engineering and review rules: threat model, input validation, authorization, secrets, OWASP classes.
 appliesTo: ["tech-lead","backend-engineer","frontend-engineer","mobile-engineer","devops-sre","reviewer","qa-engineer"]
 capabilities: ["security-critical"]
 keywords: ["auth","authentication","authorization","login","password","token","jwt","oauth","encrypt","encryption","pii","payment","card data","secret","gdpr","hipaa","vulnerability","compliance"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Security
 

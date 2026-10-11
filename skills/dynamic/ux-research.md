@@ -1,8 +1,15 @@
 ---
 name: ux-research
+version: 1.0.0
+description: UX research rules: user goals, journeys, usability evidence and accessible design decisions.
 appliesTo: ["ux-ui-designer","product-lead","business-analyst","researcher"]
 capabilities: []
 keywords: ["user research","persona","usability","interview","user journey","survey","user needs","jobs to be done","customer discovery"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # UX research
 

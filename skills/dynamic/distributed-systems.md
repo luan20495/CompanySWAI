@@ -1,9 +1,16 @@
 ---
 name: distributed-systems
+version: 1.0.0
+description: Distributed-systems rules: consistency, ordering, failure modes, queues and eventual consistency.
 appliesTo: ["tech-lead","backend-engineer","devops-sre","reviewer"]
 capabilities: []
 keywords: ["distributed","microservice","microservices","queue","kafka","event-driven","saga","consensus","replication","sharding","idempotency","eventual consistency","message broker"]
 minComplexity: 5
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Distributed systems
 

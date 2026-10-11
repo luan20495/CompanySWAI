@@ -6,6 +6,7 @@ import {condense,contractViolations,isNone,parseAgentOutput,parseReviewVerdict,t
 import {LocalRepoWorkspace,WorkspaceError,parseFilePatches,type CheckCommandSpec,type FilePatch,type GateResult,type GateRun} from "./repo-workspace.js";
 import {runIsolated} from "./worktrees.js";
 import {redact,redactError} from "./secrets.js";
+import type {SkillTraceValue} from "./skill-registry.js";
 import {runValidators} from "./validators.js";
 import {parseArchitectureReview,parseQa,parseRequirements,parseResearch} from "./structured.js";
 
@@ -25,6 +26,8 @@ export type RunTask={
  deliversCode?:boolean;
  workspace?:{path:string;checks:CheckCommandSpec[];gates:Record<string,CheckCommandSpec[]>;setup:CheckCommandSpec[];autoCommit:boolean;isolation:"none"|"worktree"};
  handoffTo?:Array<{taskId:string;role:string}>;
+ /** The specialist skills injected into `system` (persisted on every execution record this task produces). */
+ skillTrace?:SkillTraceValue;
 };
 
 export class ContractViolationError extends Error{
@@ -47,7 +50,7 @@ export class TaskRunner{
  constructor(private state:CompanyState){}
 
  private base(task:RunTask,id:string,startedAt:string,provider:{name:string;model:string}){
-  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost,billing:task.billing??"metered",profileId:task.profileId,baseSha:task.baseSha,slot:task.slot,contextRefs:task.contextRefs??[]};
+  return {id,projectId:task.projectId,taskId:task.taskId,agentRole:task.agentRole,department:task.department??"general",provider:provider.name,model:provider.model,startedAt,inputRefs:task.inputRefs,estimatedCost:task.estimatedCost,billing:task.billing??"metered",profileId:task.profileId,baseSha:task.baseSha,slot:task.slot,contextRefs:task.contextRefs??[],skillTrace:task.skillTrace};
  }
 
  async run(task:RunTask,provider:ModelProvider){

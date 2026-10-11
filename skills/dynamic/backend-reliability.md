@@ -1,8 +1,15 @@
 ---
 name: backend-reliability
+version: 1.0.0
+description: Backend reliability rules: timeouts, retries, idempotency, backpressure and graceful degradation.
 appliesTo: ["tech-lead","backend-engineer","devops-sre","reviewer","qa-engineer"]
 capabilities: ["deployment"]
 keywords: ["reliability","sla","slo","availability","retry","timeout","circuit breaker","fault tolerant","resilience","failover","uptime"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Backend reliability
 

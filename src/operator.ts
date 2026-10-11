@@ -20,7 +20,7 @@ import {redact} from "./secrets.js";
  * blocker stores and traceability — and stores nothing of its own. "Done" is the engine's own `taskHistory`, so what the
  * operator reports can never disagree with what the scheduler would do.
  */
-export type OperatorErrorCode="INVALID_PROJECT_ID"|"UNKNOWN_PROJECT"|"AMBIGUOUS_PROJECT"|"NO_PROJECTS"|"NO_PLAN"|"UNKNOWN_TASK"|"UNKNOWN_AGENT"|"UNSUPPORTED"|"CONFLICT"|"USAGE";
+export type OperatorErrorCode="INVALID_PROJECT_ID"|"UNKNOWN_PROJECT"|"AMBIGUOUS_PROJECT"|"NO_PROJECTS"|"NO_PLAN"|"UNKNOWN_TASK"|"UNKNOWN_AGENT"|"UNKNOWN_SKILL"|"UNSUPPORTED"|"CONFLICT"|"USAGE";
 export class OperatorError extends Error{
  constructor(readonly code:OperatorErrorCode,message:string,readonly candidates:string[]=[]){super(message);this.name="OperatorError";}
 }
@@ -218,6 +218,8 @@ export type AgentView={
  role:string;state:"RUNNING"|"BLOCKED"|"WAITING"|"DONE"|"IDLE";
  assignments:Array<{taskId:string;kind:"maker"|"review";state:TaskState;step?:string}>;
  current?:{taskId:string;step:string;provider:string;model:string;elapsedMs:number};
+ /** Specialist skills the agent's tasks were given (name, version, source), from the persisted plan. */
+ skills:Array<{name:string;version?:string;source?:string;tasks:string[]}>;
  waitingFor:string[];outputs:string[];pendingHandoffsIn:Array<{fromTask:string;fromRole:string;forTask:string}>;lastActivityAt?:string;
 };
 export async function agentsView(state:CompanyState,model:ProjectModel):Promise<AgentView[]>{
@@ -246,8 +248,13 @@ export async function agentsView(state:CompanyState,model:ProjectModel):Promise<
   const pending=handoffs.filter(h=>h.toRole===role).flatMap(h=>plan.tasks.filter(t=>t.agentRole===role&&t.dependencies.includes(h.taskId)&&byId.get(t.id)?.state!=="DONE").map(t=>({fromTask:h.taskId,fromRole:h.fromRole,forTask:t.id})));
   const dedupe=new Map(pending.map(p=>[p.fromTask+">"+p.forTask,p]));
   const live=running?byId.get(running.taskId)?.running:undefined;
+  const skillUse=new Map<string,{name:string;version?:string;source?:string;tasks:string[]}>();
+  for(const t of plan.tasks){
+   const used=t.agentRole===role?(t.skillTrace?.used??t.skills.map(name=>({name,version:undefined,source:undefined}))):t.review?.role===role?(t.review.skillTrace?.used??[]):[];
+   for(const u of used){const e=skillUse.get(u.name)??{name:u.name,version:u.version,source:u.source,tasks:[]};e.tasks.push(t.id);skillUse.set(u.name,e);}
+  }
   views.push({
-   role,state:state_,assignments,
+   role,state:state_,assignments,skills:[...skillUse.values()].sort((a,b)=>a.name.localeCompare(b.name)),
    current:running&&live?{taskId:running.taskId,step:live.step,provider:live.provider,model:live.model,elapsedMs:live.elapsedMs}:undefined,
    waitingFor:[...new Set(assignments.filter(a=>a.state==="WAITING"||a.state==="READY").flatMap(a=>a.step?.startsWith("under review")?[a.taskId+" "+a.step]:byId.get(a.taskId)?.waitingOn.map(w=>w.taskId+" ("+w.state+")")??[]))],
    outputs:done.map(r=>r.taskId+(isReview(r.taskId)?"":": "+r.artifactRefs.filter(x=>!x.startsWith("handoff:")&&!x.startsWith("file:")&&!x.startsWith("commit:")).join(","))),
@@ -395,6 +402,7 @@ async function commitExists(workspace:string|undefined,sha:string):Promise<"yes"
 
 export type TaskDetail={
  task:TaskView;prompt?:string;skills:string[];
+ skillTrace?:import("./skill-registry.js").SkillTraceValue;reviewSkillTrace?:import("./skill-registry.js").SkillTraceValue;
  evidence?:{
   inputArtifacts:string[];outputArtifacts:Array<{id:string;kind:string;title:string;createdAt:string;chars:number}>;
   handoffsOut:Array<{id:string;to:string}>;handoffsIn:Array<{id:string;from:string;fromTask:string}>;decisions:string[];blockers:string[];
@@ -406,7 +414,7 @@ export type TaskDetail={
 };
 export async function taskDetail(state:CompanyState,model:ProjectModel,taskId:string,evidence:boolean):Promise<TaskDetail>{
  const task=resolveTask(model,taskId),plan=model.plan!,def=plan.tasks.find(t=>t.id===task.id)!;
- const base:TaskDetail={task,prompt:evidence?redact(def.prompt):undefined,skills:def.skills};
+ const base:TaskDetail={task,prompt:evidence?redact(def.prompt):undefined,skills:def.skills,skillTrace:def.skillTrace,reviewSkillTrace:def.review?.skillTrace};
  if(!evidence)return base;
  const own=model.records.filter(r=>r.taskId===task.id||r.taskId.startsWith(task.id+"--review-"));
  const [artifacts,handoffs,decisions,blockers,reviews,checkpoint]=await Promise.all([state.artifacts.list(model.projectId),state.handoffs.list(model.projectId),state.decisions.list(model.projectId),state.blockers.list(model.projectId),state.reviews.list(model.projectId),state.checkpoints.load(model.projectId,task.id)]);

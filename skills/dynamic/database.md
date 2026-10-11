@@ -1,8 +1,15 @@
 ---
 name: database
+version: 1.0.0
+description: Database design and query rules: schema, indexes, migrations, transactions and data integrity.
 appliesTo: ["tech-lead","backend-engineer","devops-sre","reviewer","qa-engineer"]
 capabilities: []
 keywords: ["database","sql","postgres","postgresql","mysql","sqlite","mongodb","schema","migration","transaction","data model","persistence","ledger","inventory","orders"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Database
 

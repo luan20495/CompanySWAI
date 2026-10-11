@@ -1,8 +1,15 @@
 ---
 name: devops
+version: 1.0.0
+description: DevOps and CI/CD rules: reproducible builds, pipelines, environments, rollout and rollback.
 appliesTo: ["tech-lead","devops-sre","reviewer"]
 capabilities: ["deployment"]
 keywords: ["ci/cd","pipeline","docker","kubernetes","terraform","infrastructure","helm","deployment","release","iac"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # DevOps
 

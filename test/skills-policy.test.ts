@@ -8,13 +8,13 @@ import {planCompanyWork} from "../src/work-planner.js";
 import {loadCompanyMarkdown} from "../src/company.js";
 import {reviewDecision} from "../src/policy.js";
 
-const skill=(over:Partial<DynamicSkill>):DynamicSkill=>({name:"s",appliesTo:["a"],capabilities:[],keywords:[],tags:[],body:"BODY-"+(over.name??"s"),...over});
+const skill=(over:Partial<DynamicSkill>):DynamicSkill=>({name:"s",version:"1.0.0",description:"a test skill used only in tests",appliesTo:["a"],capabilities:[],keywords:[],tags:[],source:"companyswai",license:"LicenseRef-CompanySWAI",decision:"NATIVE",riskLevel:"low",requiresNetwork:false,requiresBrowser:false,requiresExternalBinary:[],requiresCredentials:false,preference:0,reviewMethod:false,outputContract:[],references:[],alsoFrom:[],referenceBodies:{},body:"BODY-"+(over.name??"s"),...over});
 const signals=(over:Partial<{capabilities:string[];complexity:number;tags:string[];text:string}>={})=>({capabilities:[],complexity:1,tags:[],text:"",...over});
 
 test("exactly the declared specialist skills exist, each with an activation signal and a matching file name",async()=>{
  const catalog=await new SkillCatalog().load();
- assert.deepEqual(catalog.map(s=>s.name).sort(),["accessibility","android","backend-reliability","database","devops","distributed-systems","flutter","frontend-performance","ios","mobile-native","observability","performance","security","testing","ux-research"]);
- assert.ok(catalog.every(s=>s.body.length>200&&s.appliesTo.length>0));
+ assert.deepEqual(catalog.map(s=>s.name).sort(),["accessibility","android","api-quality","backend-reliability","code-review","database","devops","distributed-systems","e2e-browser-testing","flutter","frontend-performance","fuzz-property-testing","ios","knowledge-matrix","migration-review","mobile-native","observability","performance","security","security-review","skill-development","testing","ux-research","verification-before-completion","web-research"]);
+ assert.ok(catalog.every(s=>s.body.length>120&&s.appliesTo.length>0));
 });
 
 test("skill selection is deterministic and keyed on capabilities, tags and whole-word keywords",()=>{

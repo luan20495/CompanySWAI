@@ -6,7 +6,7 @@ CompanySWAI keeps agent behaviour in Markdown and runtime mechanics in TypeScrip
 - `agents/AGENTS.md`: the authoritative list of the 11 permanent agents. Directories not listed are rejected by `npm run doctor`.
 - `agents/<id>/IDENTITY.md`: identity, department, mode (`maker`/`reviewer`), activation, stage, skills, `modelCapabilities`.
 - `agents/<id>/RULES.md`: `requires` / `optionalRequires` / `produces`, `reviewedBy`, `reviewLens`, `validators`, `extraSections`, `deliversCode`, DONE conditions and the exact output formats the validators enforce.
-- `skills/*.md` (permanent) and `skills/dynamic/*.md` (specialist; `appliesTo`, `capabilities`, `keywords`, `tags`, `minComplexity` signals).
+- `skills/*.md` (permanent) and `skills/dynamic/*.md` (specialist: registry metadata incl. `appliesTo`, `capabilities`, `keywords`, `tags`, `minComplexity`, source/commit/licence/risk/needs; optional `skills/references/<skill>/*.md` loaded on demand). See `docs/SKILLS-AUDIT.md`.
 - `company/OUTPUT-CONTRACT.md`, `MEMORY.md`, `POLICY.md`, `GATES.md`, `LEARNING.md`, `COMPANY.md`, `WORKFLOW.md`, `QUALITY-GATES.md`.
 
 ## Runtime (TypeScript)

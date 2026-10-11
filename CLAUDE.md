@@ -35,6 +35,8 @@ Use `npm run -s operator -- <command> <project> [options]` (add `--json` if you 
 | "show logs of T-31" | `logs <p> T-31` (concise); `--full` only if asked for raw output |
 | "reviews / QA / usage" | `reviews <p>`, `qa <p>`, `usage <p>` |
 | "how long is left?" | `status <p>` → ETA. Repeat it with its label (ESTIMATE) or say it is unknown. |
+| "which skills exist?", "where does this skill come from / which version / needs a dependency?" | `skills` (add `--role <role>`), `skill <name>` |
+| "which skills is this agent using?", "why does this task need the security skill?" | `agents <p> --agent <role>`, `task <p> <task>` (shows each skill, why it matched, and what was skipped) |
 | "stop safely" | `stop <p>`, then `status <p>` until ENGINE is not RUNNING |
 | "resume" | `resume <p>` (long-running: run it in the background, then poll `status`) |
 | "do publish first" | find the task with `tasks <p>`; `priority <p> <task>` (preview) → show the user → `priority <p> <task> --apply` once they agree |

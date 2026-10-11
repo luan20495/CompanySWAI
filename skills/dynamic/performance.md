@@ -1,8 +1,15 @@
 ---
 name: performance
+version: 1.0.0
+description: Performance engineering rules: measure first, budgets, profiling, load tests and regressions.
 appliesTo: ["tech-lead","backend-engineer","frontend-engineer","mobile-engineer","reviewer","qa-engineer"]
 capabilities: ["performance-critical"]
 keywords: ["latency","throughput","p99","p95","benchmark","high traffic","load","scale","concurrent users","response time"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Performance
 

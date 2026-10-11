@@ -1,8 +1,15 @@
 ---
 name: android
+version: 1.0.0
+description: Native Android engineering rules: lifecycle, Compose, threading, permissions and Play delivery.
 appliesTo: ["mobile-engineer","reviewer","qa-engineer"]
 capabilities: []
 keywords: ["android","kotlin","jetpack","compose","gradle","play store","apk","aab"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Android
 

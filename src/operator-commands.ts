@@ -9,6 +9,8 @@ import {
  OperatorError,agentsView,blockersView,handoffsView,loadProjectModel,logEntries,projectSummaries,qaView,resolveProject,resolveTask,reviewsView,statusView,taskDetail,usageView,
  type LoadOptions,type ProjectModel
 } from "./operator.js";
+import {catalogView,renderCatalog,renderSkill,skillRows} from "./skills-view.js";
+import {SkillCatalog} from "./skill-selector.js";
 import {renderAgents,renderBlockers,renderHandoffs,renderLogs,renderProjects,renderQa,renderReviews,renderStatus,renderTask,renderTasks,renderUsage} from "./operator-render.js";
 
 /**
@@ -23,6 +25,8 @@ export type OperatorContext=LoadOptions&{
  /** Builds the provider selector (and agent/skill catalogue) for `resume`; absent in read-only hosts. */
  engine?:(options:{dryRun:boolean;runtimePath?:string})=>Promise<{selector:ProviderSelector;knownRoles:string[];knownSkills:string[]}>;
  orchestrator?:OrchestratorOptions;
+ /** Skill catalogue for `skills` / `skill` (defaults to the repository skills directory). */
+ skills?:SkillCatalog;
 };
 export type OperatorResult={code:number;stdout:string;stderr:string};
 
@@ -39,6 +43,8 @@ export const OPERATOR_USAGE=[
  "  qa       [project]                    requirement -> test results and QA rework",
  "  logs     [project] [task] [--agent role] [--tail N] [--full]   concise latest events; --full adds raw output",
  "  usage    [project]                    tokens, known cost, retries, per-agent calls",
+ "  skills   [--role role]                the specialist skill catalogue: source, version, licence, roles, optional dependencies (no project needed)",
+ "  skill    <name>                       one skill: source commit, licence, activation signals, context cost, dependencies",
  "  stop     [project] [--reason text]    ask the running engine to stop safely between steps",
  "  resume   [project] [--dry-run] [--runtime file] [--max-parallel N] [--supervise[=minutes]]   continue from the persisted plan and log",
  "  priority [project] <task> [--apply]   preview/apply a higher scheduling priority for a task and its unfinished upstream tasks",
@@ -46,7 +52,7 @@ export const OPERATOR_USAGE=[
 ].join("\n");
 
 const BOOLEAN=new Set(["--json","--evidence","--full","--latest","--apply","--dry-run"]);
-const VALUED=new Set(["--project","-p","--state","--agent","--task","--tail","--reason","--runtime","--max-parallel","--state-dir"]);
+const VALUED=new Set(["--project","-p","--role","--state","--agent","--task","--tail","--reason","--runtime","--max-parallel","--state-dir"]);
 const TASK_STATES=new Set<string>(["DONE","RUNNING","BLOCKED","PAUSED","AWAITING_APPROVAL","WAITING","READY","INTERRUPTED"]);
 const usage=(message:string)=>new OperatorError("USAGE",message+"\n"+OPERATOR_USAGE);
 
@@ -167,6 +173,16 @@ export async function runOperator(argv:string[],ctx:OperatorContext):Promise<Ope
   if(command==="projects"){
    if(positionals.length)throw usage("projects takes no arguments");
    const rows=await projectSummaries(state,ctx);return emit(rows,()=>renderProjects(rows));
+  }
+  if(command==="skills"){
+   if(positionals.length)throw usage("skills takes no project; use --role <role> to see one role's skills");
+   const role=text(flags,"--role"),view=await catalogView({catalog:ctx.skills,role});return emit(view,()=>renderCatalog(view,role));
+  }
+  if(command==="skill"){
+   if(positionals.length!==1)throw usage("skill needs exactly one skill name");
+   const rows=await skillRows(await (ctx.skills??new SkillCatalog()).load()),row=rows.find(r=>r.name===positionals[0]);
+   if(!row)throw new OperatorError("UNKNOWN_SKILL","Unknown skill '"+clipArg(positionals[0])+"'. Known: "+rows.map(r=>r.name).join(", "));
+   return emit(row,()=>renderSkill(row));
   }
   const spec:Record<string,"none"|"optional"|"required">={status:"none",agents:"none",tasks:"none",blockers:"none",reviews:"none",qa:"none",usage:"none",stop:"none",resume:"none",task:"required",priority:"required",handoffs:"optional",logs:"optional"};
   if(!(command in spec))throw usage("Unknown command '"+clipArg(command)+"'");

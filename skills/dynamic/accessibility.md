@@ -1,8 +1,15 @@
 ---
 name: accessibility
+version: 1.0.0
+description: Accessibility (WCAG 2.2 AA) rules for building and reviewing user interfaces.
 appliesTo: ["ux-ui-designer","frontend-engineer","mobile-engineer","reviewer","qa-engineer"]
 capabilities: []
 keywords: ["accessibility","a11y","wcag","screen reader","aria","assistive","public","customer","consumer","storefront","citizen"]
+source: companyswai
+license: LicenseRef-CompanySWAI
+decision: NATIVE
+riskLevel: low
+outputContract: ["Evidence"]
 ---
 # Accessibility
 
