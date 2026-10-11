@@ -9,6 +9,7 @@ import {closeProject} from "./closeout.js";
 import {computeFinalStatus} from "./final-status.js";
 import {PHASES,hashOf,type FinalStatusValue,type Phase,type RunStateValue} from "./run-store.js";
 import type {CompanyState} from "./state.js";
+import {takeoverGate} from "./takeover.js";
 
 /**
  * One command from brief to retrospective. Every phase persists its result before the next starts, so a crash anywhere
@@ -27,6 +28,8 @@ export type AutonomousOptions={
  orchestrator?:OrchestratorOptions;
  approvalWait?:{pollMs:number;timeoutMs:number};
  knownRoles?:string[];knownSkills?:string[];
+ /** Returns a reason when this plan must not start writing yet; the run parks and resumes once it passes. Defaults to the takeover gate, so every caller (company, operator resume, benchmark) is covered. */
+ executionGate?:(plan:ProjectPlanValue)=>Promise<string|undefined>;
  /** Test hook: runs after each completed phase (throw to simulate a crash). */
  afterPhase?:(phase:Phase)=>void|Promise<void>;
 };
@@ -114,6 +117,8 @@ export async function runAutonomous(input:AutonomousInput,options:AutonomousOpti
  }
 
  // ---------------------------------------------------------------- EXECUTE
+ const blocked=await (options.executionGate??takeoverGate(state))(settled);
+ if(blocked){await stop("EXECUTE",blocked);await state.memory.recordStatus(projectId,"autonomous","BLOCKED_TAKEOVER",blocked);return {projectId,phase:"EXECUTE",stopped:blocked,plan:settled,estimate,notes};}
  const orchestrator=()=>new ProjectOrchestrator(options.selector,state,{...options.orchestrator,approvalWait:options.approvalWait??options.orchestrator?.approvalWait});
  // After EXECUTE finished earlier this is a cheap pass that skips every completed task and keeps the summary current.
  const summary=await orchestrator().run(settled);

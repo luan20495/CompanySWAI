@@ -37,6 +37,7 @@ Use `npm run -s operator -- <command> <project> [options]` (add `--json` if you 
 | "how long is left?" | `status <p>` → ETA. Repeat it with its label (ESTIMATE) or say it is unknown. |
 | "which skills exist?", "where does this skill come from / which version / needs a dependency?" | `skills` (add `--role <role>`), `skill <name>` |
 | "which skills is this agent using?", "why does this task need the security skill?" | `agents <p> --agent <role>`, `task <p> <task>` (shows each skill, why it matched, and what was skipped) |
+| "audit / take over this existing repo", "what is done and what is left in <repo>?" | `npm run takeover -- run <workspace> --project <id> [--focus topic]` (long-running: background it; read-only; ends at AUDIT_COMPLETE_WAITING_APPROVAL), then `takeover <id>` / `npm run takeover -- report <id>`. Never start coding because an audit finished: wait for the user, then `npm run takeover -- approve <id>` |
 | "stop safely" | `stop <p>`, then `status <p>` until ENGINE is not RUNNING |
 | "resume" | `resume <p>` (long-running: run it in the background, then poll `status`) |
 | "do publish first" | find the task with `tasks <p>`; `priority <p> <task>` (preview) → show the user → `priority <p> <task> --apply` once they agree |

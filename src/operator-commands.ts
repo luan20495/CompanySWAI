@@ -11,6 +11,7 @@ import {
 } from "./operator.js";
 import {catalogView,renderCatalog,renderSkill,skillRows} from "./skills-view.js";
 import {SkillCatalog} from "./skill-selector.js";
+import {renderTakeoverStatus} from "./takeover-view.js";
 import {renderAgents,renderBlockers,renderHandoffs,renderLogs,renderProjects,renderQa,renderReviews,renderStatus,renderTask,renderTasks,renderUsage} from "./operator-render.js";
 
 /**
@@ -45,6 +46,7 @@ export const OPERATOR_USAGE=[
  "  usage    [project]                    tokens, known cost, retries, per-agent calls",
  "  skills   [--role role]                the specialist skill catalogue: source, version, licence, roles, optional dependencies (no project needed)",
  "  skill    <name>                       one skill: source commit, licence, activation signals, context cost, dependencies",
+ "  takeover [project]                    read-only audit of an existing repository: status, classification, whether writing is unlocked (no engine needed)",
  "  stop     [project] [--reason text]    ask the running engine to stop safely between steps",
  "  resume   [project] [--dry-run] [--runtime file] [--max-parallel N] [--supervise[=minutes]]   continue from the persisted plan and log",
  "  priority [project] <task> [--apply]   preview/apply a higher scheduling priority for a task and its unfinished upstream tasks",
@@ -177,6 +179,12 @@ export async function runOperator(argv:string[],ctx:OperatorContext):Promise<Ope
   if(command==="skills"){
    if(positionals.length)throw usage("skills takes no project; use --role <role> to see one role's skills");
    const role=text(flags,"--role"),view=await catalogView({catalog:ctx.skills,role});return emit(view,()=>renderCatalog(view,role));
+  }
+  if(command==="takeover"){
+   if(positionals.length>1)throw usage("takeover takes at most one project");
+   const id=positionals[0]??text(flags,"--project"),records=id?[await state.takeover.load(id)].filter(Boolean):await state.takeover.list();
+   if(id&&!records.length)throw new OperatorError("UNKNOWN_PROJECT","No takeover exists for '"+clipArg(id)+"'.");
+   const view=await renderTakeoverStatus(state,id);return emit(records,()=>view);
   }
   if(command==="skill"){
    if(positionals.length!==1)throw usage("skill needs exactly one skill name");
