@@ -42,18 +42,19 @@ npm run operator -- takeover [id]                                 # read-only vi
 An audit executes nothing. To get a classification that rests on runs, run the gates yourself, **record them before `run`**, then audit under a new project id:
 
 ```
-npm run takeover -- evidence junit  <project> --dir <workspace>/backend/build/test-results/test --commit <40-hex audited HEAD>
+npm run takeover -- evidence junit  <project> --dir <workspace>/backend/build/test-results/test --module backend/ --commit <40-hex audited HEAD>
 npm run takeover -- evidence add    <project> --name "frontend gate" --commit <sha> --outcome PASS|FAIL|NOT_RUN --command "npm run gate:frontend" --summary "GATE GREEN" --log gate.log
 npm run takeover -- evidence list   <project>
 npm run takeover -- run <workspace> --project <project> --focus ...
 ```
 
-- Records are the **operator's**, not the engine's: the engine does not re-run them. It keeps each log's sha256, binds every record to one commit, and ignores records for any other commit (the report counts them).
-- `junit` reads `TEST-*.xml` itself: one record per class, `PASS` / `FAIL` (any failure or error) / `NOT_RUN` (everything skipped). A cited test file (or specific test directory) counts as executed when the class its path declares passed (`src/test/kotlin/a/b/FooTests.kt` -> `a.b.FooTests`).
+- Records are the **operator's**, not the engine's: the engine does not re-run them and does not keep the logs; it keeps each log's sha256 (for JUnit, of the XML), binds every record to one commit, and ignores records for any other commit (the report counts them). Results produced by the audited repository's own build are only as trustworthy as that repository. Commits are 40-hex (SHA-1) ids.
+- A record is identified by commit and id. Recording the same id for the same commit again with a different result is refused unless `--replace`; a run for another commit never replaces this one. A record cannot contradict its counts (PASS with failures, or with no test run).
+- `junit` reads `TEST-*.xml` itself, one record per suite and `--module` (the test module prefix; the same class name in two modules is two results): `FAIL` on any failure/error (attribute or element; comments and CDATA ignored), `PASS` only when tests ran and nothing failed, `NOT_RUN` when everything was skipped or the counts cannot be read. A cited test file counts when the class its path declares passed in its module (`backend/src/test/kotlin/a/b/FooTests.kt` -> module `backend/`, class `a.b.FooTests`); a cited test **directory** counts only when every JUnit test file under it ran and passed (failed -> FAIL, otherwise NOT_RUN with "k of N").
 - Gates are cited by the agents as `exec:<id>` (`exec:gate:frontend-gate`); an unknown id is discarded like an unknown path. A `NOT_RUN` gate is a valid citation for `BLOCKED` / `NOT_DONE`, never for `DONE`.
-- With any record for the audited commit the audit is *verified*: a `DONE` needs an executed PASS (else it drops to `PARTIAL`), and a cited FAIL forbids `DONE`. Items then carry `STATIC` or `EXECUTED`.
+- With any record for the audited commit the audit is *verified*: a `DONE` needs a cited **test** file or directory with an executed PASS (a gate alone says nothing about one item), and a cited FAIL forbids `DONE`. The engine does not look up failing classes the agent did not cite; the pack lists the failed classes so the agents and the reviewer can see them. Items then carry `STATIC` or `EXECUTED`.
 - The pack also lists every implementation file (`SOURCE FILES`), so an agent can cite source for a `DONE`.
-- The set is frozen with the snapshot (`executed-evidence.json`) and shown in the report under "Executed evidence".
+- The set is frozen with the snapshot (`executed-evidence.json`, its hash is in the record). A resumed audit whose frozen set is missing or edited becomes `AUDIT_INVALID`. It is shown in the report under "Executed evidence".
 
 ## Approval and the write gate
 `approve` is the user's explicit go-ahead; it also requires the target to still be at the audited commit. `runAutonomous` runs the

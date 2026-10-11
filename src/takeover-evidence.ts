@@ -29,24 +29,24 @@ const has=(classes:Set<string>,...names:string[])=>names.some(n=>classes.has(n))
 
 export function assessItem(item:z.infer<typeof AgentItem>,snapshot:Snapshot,index:Set<string>,exec:ExecEvidence=noExec):AssessedItem{
  const evidence:AssessedItem["evidence"]=[],rejected:string[]=[],classes=new Set<string>(),lookup=lookupOf(exec),verified=exec.records.length>0;
- for(const ref of new Set(item.evidence)){
-  const ran=verified?executedFor(lookup,ref.trim(),snapshot):undefined,isExec=ref.trim().startsWith("exec:");
+ for(const ref of new Set(item.evidence.map(r=>r.trim()))){
+  const ran=verified?executedFor(lookup,ref,snapshot):undefined,isExec=ref.startsWith("exec:");
   // `exec:<id>` names a recorded run; anything else is a path, directory or commit that must exist in the snapshot.
-  const resolved=isExec?(ran?{ref:ref.trim(),classes:[ran.outcome==="NOT_RUN"?"NOT_RUN":"EXECUTED"]}:undefined):resolveRef(snapshot,ref,index);
+  const resolved=isExec?(ran?{ref,classes:[ran.outcome==="NOT_RUN"?"NOT_RUN":"EXECUTED"]}:undefined):resolveRef(snapshot,ref,index);
   if(resolved){evidence.push({ref:resolved.ref,classes:resolved.classes,...(ran?{executed:ran.outcome,executedDetail:ran.detail}:{})});resolved.classes.forEach(c=>classes.add(c));}else rejected.push(ref);
  }
- const passed=evidence.some(e=>e.executed==="PASS"),failed=evidence.some(e=>e.executed==="FAIL");
+ const passed=evidence.some(e=>e.executed==="PASS"),passedTest=evidence.some(e=>e.executed==="PASS"&&e.classes.includes("TEST")),failed=evidence.some(e=>e.executed==="FAIL");
  const adjustments:string[]=[];let status=item.status,verification:Verification="NONE";
  // Implementation and test must come from different citations, or one broad directory could vouch for both.
- const code=evidence.some(a=>a.classes.includes("SOURCE")&&evidence.some(b=>b!==a&&b.classes.includes("TEST"))),implemented=has(classes,"SOURCE","TEST","CONFIG","EXECUTED");
+ const code=evidence.some(a=>a.classes.includes("SOURCE")&&evidence.some(b=>b.ref!==a.ref&&b.classes.includes("TEST"))),implemented=has(classes,"SOURCE","TEST","CONFIG","EXECUTED");
  if(rejected.length)adjustments.push(rejected.length+" citation(s) are not tracked paths, specific directories or commits in the snapshot and were discarded");
  const ran=passed||failed;
  if(status==="DONE"){
   if(failed){status="PARTIAL";verification="EXECUTED";adjustments.push("a cited executed result FAILED, so this cannot be DONE");}
   else if(code){
    if(!verified)verification="STATIC";
-   else if(passed)verification="EXECUTED";
-   else{status="PARTIAL";verification="STATIC";adjustments.push("DONE in a verified audit needs an executed PASS among the citations (a passing test class or exec:<gate>); only static evidence was found");}
+   else if(passedTest)verification="EXECUTED";
+   else{status="PARTIAL";verification=passed?"EXECUTED":"STATIC";adjustments.push(passed?"DONE in a verified audit needs a cited test file (or fully-run test directory) whose executed result PASSED; a gate result alone says nothing about this item":"DONE in a verified audit needs an executed PASS on a cited test file or test directory; only static evidence was found");}
   }
   else if(implemented){status="PARTIAL";verification=ran?"EXECUTED":"STATIC";adjustments.push("DONE needs implementation source and test source cited separately; found "+[...classes].join("/"));}
   else{status="UNKNOWN";adjustments.push(classes.size?"DONE cannot rest on "+[...classes].join("/")+" alone (documents and history do not prove completion)":"DONE without any valid evidence");}

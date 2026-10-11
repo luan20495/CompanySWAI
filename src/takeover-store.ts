@@ -12,7 +12,7 @@ export const TakeoverRecord=z.object({
  version:z.literal(1),projectId:SafeId,workspace:z.string().min(1),status:TakeoverStatus,auditedHead:z.string().min(1),branch:z.string(),
  focus:z.array(z.string()).default([]),startedAt:z.string(),updatedAt:z.string(),reason:z.string().optional(),
  reportHash:z.string().optional(),counts:z.record(z.string(),z.number()).optional(),changedParts:z.array(z.string()).default([]),
- approvedBy:z.string().optional(),approvedAt:z.string().optional()
+ approvedBy:z.string().optional(),approvedAt:z.string().optional(),execHash:z.string().optional(),execCount:z.number().optional()
 });
 export type TakeoverRecordValue=z.infer<typeof TakeoverRecord>;
 

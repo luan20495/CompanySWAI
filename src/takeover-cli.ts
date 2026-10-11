@@ -17,12 +17,13 @@ const USAGE=[
  "  approve <project> [--by name]   the explicit go-ahead that unlocks writing to the audited workspace",
  "  evidence add <project> --name <n> --commit <40-hex> --outcome PASS|FAIL|NOT_RUN [--command c] [--summary s] [--log file] [--id id] [--tests N --failures N --errors N --skipped N]",
  "       record a run YOU made (a gate, a suite) for the commit to audit; only before `run`. The engine does not re-run it; it keeps the log's hash",
- "  evidence junit <project> --dir <test-results dir> --commit <40-hex>   one record per JUnit class (TEST-*.xml)",
+ "  evidence junit <project> --dir <test-results dir> --module <prefix/|.> --commit <40-hex>   one record per JUnit suite (TEST-*.xml)",
+ "  (add --replace to overwrite a record that already exists for the same commit with a different result)",
  "  evidence list <project>   what is recorded",
  "Options: --state-dir <dir> (default .companyswai)"
 ].join("\n");
 
-const args=process.argv.slice(2),valued=["--project","--focus","--runtime","--state-dir","--max-parallel","--by","--name","--commit","--outcome","--command","--summary","--log","--id","--dir","--tests","--failures","--errors","--skipped"];
+const args=process.argv.slice(2),valued=["--project","--focus","--runtime","--state-dir","--max-parallel","--by","--name","--commit","--outcome","--command","--summary","--log","--id","--dir","--module","--tests","--failures","--errors","--skipped"];
 const values=(name:string)=>args.flatMap((a,i)=>a===name&&args[i+1]!=null?[args[i+1]]:[]);
 const one=(name:string)=>values(name)[0];
 const positional=args.filter((a,i)=>!a.startsWith("--")&&!valued.includes(args[i-1]??""));
@@ -59,13 +60,16 @@ try{
   if(target==="add"){
    const name=one("--name"),outcome=ExecOutcome.parse(one("--outcome"));
    if(!name||!commit)throw new Error(USAGE);
+   if(num("--tests")==null&&["--failures","--errors","--skipped"].some(f=>one(f)!=null))throw new Error("--failures/--errors/--skipped need --tests");
    const counts=num("--tests")==null?undefined:{tests:num("--tests")!,failures:num("--failures")??0,errors:num("--errors")??0,skipped:num("--skipped")??0};
-   const ledger=await recordExec(state.takeover,project,[await gateRecord({name,commit,outcome,command:one("--command"),summary:one("--summary"),log:one("--log"),id:one("--id"),counts})]);
+   const ledger=await recordExec(state.takeover,project,[await gateRecord({name,commit,outcome,command:one("--command"),summary:one("--summary"),log:one("--log"),id:one("--id"),counts})],{replace:args.includes("--replace")});
    console.log("recorded; "+ledger.records.length+" record(s) for '"+project+"'");
   }else if(target==="junit"){
    const dir=one("--dir");
    if(!dir||!commit)throw new Error(USAGE);
-   const records=await junitRecords(dir,commit),ledger=await recordExec(state.takeover,project,records);
+   const module=one("--module");
+   if(module==null)throw new Error("--module is required (the test module prefix, e.g. backend/; \".\" for the repository root): the same class name in two modules is two results");
+   const records=await junitRecords(dir,commit,module),ledger=await recordExec(state.takeover,project,records,{replace:args.includes("--replace")});
    console.log("recorded "+records.length+" JUnit class(es) ("+records.filter(r=>r.outcome==="PASS").length+" PASS, "+records.filter(r=>r.outcome==="FAIL").length+" FAIL, "+records.filter(r=>r.outcome==="NOT_RUN").length+" NOT_RUN); "+ledger.records.length+" record(s) for '"+project+"'");
   }else if(target==="list"){
    const ledger=await loadLedger(state.takeover,project);

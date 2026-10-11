@@ -9,7 +9,7 @@ import type {CompanyState} from "./state.js";
 import {TakeoverError,changedParts,fingerprint,git,takeSnapshot,type Fingerprint,type Snapshot} from "./takeover-probe.js";
 import {assessClassification,extractClassification,type AssessedItem,type TakeoverClassification} from "./takeover-evidence.js";
 import {TAKEOVER_TASKS,buildTakeoverPlan,type TakeoverPlanOptions} from "./takeover-plan.js";
-import {loadLedger,noExec,usableFor,type ExecEvidence} from "./takeover-exec.js";
+import {ExecEvidenceSchema,execHash,loadLedger,noExec,usableFor,type ExecEvidence} from "./takeover-exec.js";
 import type {TakeoverRecordValue} from "./takeover-store.js";
 
 /**
@@ -42,11 +42,18 @@ export async function runTakeover(options:TakeoverRunOptions):Promise<TakeoverRu
   exec=usableFor(await loadLedger(store,projectId),snapshot.head);
   plan=await buildTakeoverPlan(projectId,snapshot,{...options.plan,focus,exec});
   await store.writeJson(projectId,"executed-evidence.json",exec);await store.writeJson(projectId,"snapshot.json",snapshot);await store.writeJson(projectId,"fingerprint-before.json",before);await store.writeJson(projectId,"plan.json",plan);
-  record=await store.save({version:1,projectId,workspace:root,status:"AUDITING",auditedHead:snapshot.head,branch:snapshot.branch,focus,startedAt:now().toISOString(),updatedAt:now().toISOString(),changedParts:[]});
+  record=await store.save({version:1,projectId,workspace:root,status:"AUDITING",auditedHead:snapshot.head,branch:snapshot.branch,focus,startedAt:now().toISOString(),updatedAt:now().toISOString(),changedParts:[],...(exec.records.length?{execHash:execHash(exec),execCount:exec.records.length}:{})});
   await state.memory.recordStatus(projectId,"takeover","AUDITING","read-only audit of "+basename(root)+" at "+snapshot.head.slice(0,10));
  }else{
   // Resuming: the stored snapshot and plan are the audit; if the target moved since, they no longer describe it.
-  snapshot=(await store.readData<Snapshot>(projectId,"snapshot.json"))!;before=(await store.readData<Fingerprint>(projectId,"fingerprint-before.json"))!;plan=ProjectPlan.parse(await store.readData(projectId,"plan.json"));exec=(await store.readData<ExecEvidence>(projectId,"executed-evidence.json"))??noExec;
+  snapshot=(await store.readData<Snapshot>(projectId,"snapshot.json"))!;before=(await store.readData<Fingerprint>(projectId,"fingerprint-before.json"))!;plan=ProjectPlan.parse(await store.readData(projectId,"plan.json"));
+  // The executed evidence the agents saw is the evidence the engine assesses: a missing or edited frozen set invalidates the audit instead of switching the checks off.
+  exec=noExec;
+  if(record.execHash){
+   const frozen=ExecEvidenceSchema.safeParse(await store.readData<unknown>(projectId,"executed-evidence.json").catch(()=>undefined));
+   if(!frozen.success||execHash(frozen.data)!==record.execHash)return {record:await store.save({...record,status:"AUDIT_INVALID",reason:"the frozen executed evidence is missing or was changed after the audit started; audit again under a new project id",updatedAt:now().toISOString()})};
+   exec=frozen.data;
+  }
   const moved=changedParts(before,await fingerprint(root));
   if(moved.length)return {record:await store.save({...record,status:"TARGET_CHANGED",changedParts:moved,reason:"the target changed while the audit was parked ("+moved.join(", ")+"); a snapshot of an older state cannot be approved",updatedAt:now().toISOString()})};
  }
@@ -100,11 +107,12 @@ export const takeoverGate=(state:CompanyState)=>async(plan:ProjectPlanValue):Pro
 
 const PARTS:Array<keyof Fingerprint>=["head","branch","refs","index","staged","worktree","untracked","ignored","gitDir","worktrees"];
 const priorityRank=(p?:string)=>p?Number(p.slice(1)):9;
+const cell=(t:string)=>t.replace(/\s+/g," ").replace(/\|/g,"\\|");
 const execLines=(exec:ExecEvidence,head:string)=>{
  const gates=exec.records.filter(r=>r.kind==="gate"),junit=exec.records.filter(r=>r.kind==="junit"),n=(k:"tests"|"failures"|"errors"|"skipped")=>junit.reduce((t,r)=>t+(r.counts?.[k]??0),0);
  return ["Bound to commit "+head+(exec.otherCommits?" ("+exec.otherCommits+" record(s) for other commits were ignored)":"")+".","","| id | outcome | what | log sha256 |","|---|---|---|---|",
-  ...gates.map(g=>"| "+g.id+" | "+g.outcome+" | "+(g.command?g.command+" — ":"")+g.summary+" | "+(g.logSha256?.slice(0,12)??"none")+" |"),
-  ...(junit.length?["| junit (×"+junit.length+" classes) | "+(junit.some(r=>r.outcome==="FAIL")?"FAIL":"PASS")+" | "+n("tests")+" tests, "+n("failures")+" failures, "+n("errors")+" errors, "+n("skipped")+" skipped | per class in verification.json |"]:[])];
+  ...gates.map(g=>"| "+cell(g.id)+" | "+g.outcome+" | "+cell((g.command?g.command+" — ":"")+g.summary)+" | "+(g.logSha256?.slice(0,12)??"none")+" |"),
+  ...(junit.length?["| junit (×"+junit.length+" suites) | "+(junit.some(r=>r.outcome==="FAIL")?"FAIL":"PASS")+" | "+n("tests")+" tests, "+n("failures")+" failures, "+n("errors")+" errors, "+n("skipped")+" skipped | per class in executed-evidence.json |"]:[])];
 };
 const line=(i:AssessedItem)=>"- **"+i.id+"** "+i.area+" — "+i.claim+" ["+i.status+(i.status!==i.proposedStatus?", proposed "+i.proposedStatus:"")+" · "+i.verification+"]"+(i.evidence.length?"\n  evidence: "+i.evidence.map(e=>e.ref+" ("+e.classes.join("/")+(e.executed?" · ran "+e.executed:"")+")").join(", "):"")+(i.note?"\n  note: "+i.note:"")+(i.adjustments.length?"\n  engine: "+i.adjustments.join("; "):"");
 
@@ -120,7 +128,7 @@ export function renderTakeoverReport(input:{record:TakeoverRecordValue;snapshot:
   "| part | before | after | same |","|---|---|---|---|",...PARTS.map(k=>"| "+k+" | "+String(before[k]).slice(0,12)+" | "+String(after[k]).slice(0,12)+" | "+(before[k]===after[k]?"yes":"**NO**")+" |"),"",
   "## Evidence limits","",
   ...(exec.records.length?[
-   "- The audit itself executed nothing. EXECUTED means a run of THIS commit that the operator recorded before the audit (listed below); the engine did not re-run it and cannot vouch that the log is genuine beyond its recorded hash. STATIC means implementation (and test) source exists in the committed tree.",
+   "- The audit itself executed nothing. EXECUTED means a run of THIS commit that the operator recorded before the audit (listed below); the engine did not re-run it and does not keep the log; the recorded sha256 only lets you match a log you kept. STATIC means implementation (and test) source exists in the committed tree.",
    "- In this verified audit a DONE needs an executed PASS; anything the executed results do not cover stays PARTIAL, NOT_DONE, BLOCKED or UNKNOWN."
   ]:[
    "- Nothing was executed: no test, build, migration, install or script of the target ran. A STATIC item means implementation (and test) source exists in the committed tree; no item here is EXECUTED.",
@@ -129,7 +137,7 @@ export function renderTakeoverReport(input:{record:TakeoverRecordValue;snapshot:
   ...(exec.records.length||exec.otherCommits?["## Executed evidence","",...execLines(exec,s.head),""]:[]),
   "## Summary","",Object.entries(c.counts).map(([k,v])=>k+" "+v).join(" · "),"",
   "## Remaining work (not DONE)","",...(["P0","P1","P2","P3","none"] as const).flatMap(p=>by(p).length?["### "+(p==="none"?"Unprioritised":p),"",...by(p).sort((a,b)=>priorityRank(a.priority)-priorityRank(b.priority)).map(line),""]:[]),
-  "## Done (static evidence)","",...(c.items.filter(i=>i.status==="DONE").map(line)),"",
+  "## Done","",...(c.items.filter(i=>i.status==="DONE").map(line)),"",
   "## Critical path","",...(c.criticalPath.length?c.criticalPath.map((x,n)=>(n+1)+". "+x):["(none given)"]),"",
   ...(c.focusGaps.length?["## Focus areas the analysis did not cover","",...c.focusGaps.map(f=>"- "+f),""]:[]),
   "## How the audit ran","",...used.map(u=>"- "+u.task+" — "+u.role+(u.skills.length?" — skills: "+u.skills.join(", "):"")+(u.reviewSkills.length?" — review skills: "+u.reviewSkills.join(", "):"")+(u.record?" — execution "+u.record:"")),"",
