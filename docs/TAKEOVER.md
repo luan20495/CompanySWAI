@@ -32,10 +32,28 @@ npm run operator -- takeover [id]                                 # read-only vi
    - `DONE` needs implementation source **and** test source, cited separately (one broad directory cannot vouch for both); with only one of them it becomes `PARTIAL`; with documents/history/config alone, `UNKNOWN`. Test source means test code: fixtures, snapshots, mocks and spec documents are not tests.
    - `PARTIAL` needs source, test or configuration/migration evidence; `NOT_DONE`/`BLOCKED` need at least one valid citation (documents suffice, flagged CLAIMED).
    - Discarded citations are listed on the item. Requested `--focus` areas nobody covered are added as `UNKNOWN`.
-   - Evidence priority: executed results > source > git history > CI > config/migrations > documents > status prose. An audit executes nothing, so no item is `EXECUTED`; a `DONE` here is a **static** finding to be re-verified before it is called passed.
+   - Evidence priority: executed results > source > git history > CI > config/migrations > documents > status prose. An audit executes nothing, so without recorded runs no item is `EXECUTED` and a `DONE` is a **static** finding (see "Executed evidence" to record runs of the exact commit).
 5. **Fingerprint after** and comparison. Any difference makes the audit `TARGET_CHANGED` (the cause may be external — the audit only runs
    read-only commands and gives agents no access) and it can never be approved.
 6. `AUDIT_COMPLETE_WAITING_APPROVAL`, with `TAKEOVER-REPORT.md` (proof table, limits, counts, remaining work by P0–P3, critical path).
+
+## Executed evidence (verified audit)
+
+An audit executes nothing. To get a classification that rests on runs, run the gates yourself, **record them before `run`**, then audit under a new project id:
+
+```
+npm run takeover -- evidence junit  <project> --dir <workspace>/backend/build/test-results/test --commit <40-hex audited HEAD>
+npm run takeover -- evidence add    <project> --name "frontend gate" --commit <sha> --outcome PASS|FAIL|NOT_RUN --command "npm run gate:frontend" --summary "GATE GREEN" --log gate.log
+npm run takeover -- evidence list   <project>
+npm run takeover -- run <workspace> --project <project> --focus ...
+```
+
+- Records are the **operator's**, not the engine's: the engine does not re-run them. It keeps each log's sha256, binds every record to one commit, and ignores records for any other commit (the report counts them).
+- `junit` reads `TEST-*.xml` itself: one record per class, `PASS` / `FAIL` (any failure or error) / `NOT_RUN` (everything skipped). A cited test file (or specific test directory) counts as executed when the class its path declares passed (`src/test/kotlin/a/b/FooTests.kt` -> `a.b.FooTests`).
+- Gates are cited by the agents as `exec:<id>` (`exec:gate:frontend-gate`); an unknown id is discarded like an unknown path. A `NOT_RUN` gate is a valid citation for `BLOCKED` / `NOT_DONE`, never for `DONE`.
+- With any record for the audited commit the audit is *verified*: a `DONE` needs an executed PASS (else it drops to `PARTIAL`), and a cited FAIL forbids `DONE`. Items then carry `STATIC` or `EXECUTED`.
+- The pack also lists every implementation file (`SOURCE FILES`), so an agent can cite source for a `DONE`.
+- The set is frozen with the snapshot (`executed-evidence.json`) and shown in the report under "Executed evidence".
 
 ## Approval and the write gate
 `approve` is the user's explicit go-ahead; it also requires the target to still be at the audited commit. `runAutonomous` runs the

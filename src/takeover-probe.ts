@@ -145,15 +145,15 @@ export type Snapshot={
  log:Array<{sha:string;date:string;subject:string}>;
  files:{total:number;byTop:Record<string,number>;byClass:Record<string,number>};
  tracked:string[];tree:string[];
- lists:{tests:string[];ci:string[];migrations:string[];config:string[];docs:string[]};
- /** Real sizes of the lists above, which are capped. */
- listTotals:{tests:number;ci:number;migrations:number;config:number;docs:number};
+ lists:{tests:string[];ci:string[];migrations:string[];config:string[];docs:string[];source?:string[]};
+ /** Real sizes of the lists above, which are capped. `source` is the index of implementation files the agents may cite (absent in snapshots taken before it existed). */
+ listTotals:{tests:number;ci:number;migrations:number;config:number;docs:number;source?:number};
  docs:SnapshotDoc[];manifests:SnapshotDoc[];
 };
 
 const DOC_STATUS=/(status|known[_-]?limit|blocker|acceptance|release|qa)/i;
 const DOC_SCORE=/(status|known[_-]?limit|board|blocker|decision|roadmap|todo|handoff|release|acceptance|readme|architecture|implementation|qa|golden|p1|ownership|contract|claude)/i;
-const MAX_DOC_BYTES=400_000,EXCERPT_KEY=7000,EXCERPT=3500,MAX_DOCS=20,MAX_DOC_CHARS=110_000,LIST_CAP=400,LOG_CAP=200;
+const MAX_DOC_BYTES=400_000,EXCERPT_KEY=7000,EXCERPT=3500,MAX_DOCS=20,MAX_DOC_CHARS=110_000,LIST_CAP=400,CODE_LIST_CAP=900,LOG_CAP=200;
 const STOP=new Set(["status","final","with","from","that","this","items","done","work","flow"]);
 /** Words of the user's focus areas that can point at a document by its path ("Golden Company" -> golden, company; "C6" -> c6). */
 const focusWords=(focus:string[])=>[...new Set(focus.flatMap(f=>f.toLowerCase().split(/[^a-z0-9]+/)).filter(w=>(w.length>=4&&!STOP.has(w))||(w.length>=2&&/\d/.test(w))))];
@@ -175,12 +175,12 @@ export async function takeSnapshot(workspace:string,now=new Date(),focus:string[
  const commitCount=Number((await git(root,["rev-list","--count","HEAD"])).trim());
  const remotes=[...new Set((await git(root,["remote","-v"])).split("\n").filter(Boolean).map(l=>scrub(l.replace(/\s+\((fetch|push)\)$/,"").replace(/\/\/[^@/\s]+@/,"//"))))];
  const byTop:Record<string,number>={},byClass:Record<string,number>={},dirs=new Map<string,number>();
- const lists={tests:[] as string[],ci:[] as string[],migrations:[] as string[],config:[] as string[],docs:[] as string[]};
+ const lists={tests:[] as string[],ci:[] as string[],migrations:[] as string[],config:[] as string[],docs:[] as string[],source:[] as string[]};
  for(const path of tracked){
   const parts=path.split("/"),topName=parts.length>1?parts[0]+"/":"(root)",klass=classOfPath(path);
   byTop[topName]=(byTop[topName]??0)+1;byClass[klass]=(byClass[klass]??0)+1;
   for(let depth=1;depth<=Math.min(4,parts.length-1);depth++){const dir=parts.slice(0,depth).join("/")+"/";dirs.set(dir,(dirs.get(dir)??0)+1);}
-  if(klass==="TEST")lists.tests.push(path);else if(klass==="CI")lists.ci.push(path);else if(klass==="DOCS")lists.docs.push(path);
+  if(klass==="TEST")lists.tests.push(path);else if(klass==="SOURCE")lists.source.push(path);else if(klass==="CI")lists.ci.push(path);else if(klass==="DOCS")lists.docs.push(path);
   else if(klass==="CONFIG"){(/(^|\/)(migrations?|flyway)(\/|$)/i.test(path)?lists.migrations:lists.config).push(path);}
  }
  const tree=[...dirs].filter(([,n])=>n>=5).sort((a,b)=>a[0].localeCompare(b[0])).slice(0,220).map(([dir,n])=>dir+" ("+n+")");
@@ -202,8 +202,8 @@ export async function takeSnapshot(workspace:string,now=new Date(),focus:string[
   version:1,takenAt:now.toISOString(),workspace:root,head,branch,remotes,commitCount,
   dirty:{modified:modified.slice(0,50),untracked:untracked.slice(0,50),total:modified.length+untracked.length},log,
   files:{total:tracked.length,byTop,byClass},tracked,tree,
-  lists:{tests:lists.tests.slice(0,LIST_CAP),ci:lists.ci.slice(0,LIST_CAP),migrations:lists.migrations.slice(0,LIST_CAP),config:lists.config.slice(0,LIST_CAP),docs:lists.docs.slice(0,LIST_CAP)},
-  listTotals:{tests:lists.tests.length,ci:lists.ci.length,migrations:lists.migrations.length,config:lists.config.length,docs:lists.docs.length},docs,manifests
+  lists:{tests:lists.tests.slice(0,CODE_LIST_CAP),source:lists.source.slice(0,CODE_LIST_CAP),ci:lists.ci.slice(0,LIST_CAP),migrations:lists.migrations.slice(0,LIST_CAP),config:lists.config.slice(0,LIST_CAP),docs:lists.docs.slice(0,LIST_CAP)},
+  listTotals:{tests:lists.tests.length,source:lists.source.length,ci:lists.ci.length,migrations:lists.migrations.length,config:lists.config.length,docs:lists.docs.length},docs,manifests
  };
 }
 
