@@ -10,5 +10,6 @@
 8. Independent Reviewer reviews implementation or high-risk technical work and cannot review its own authored task.
 9. QA Engineer validates the integrated result against requirements and risk.
 10. Retrospective records reusable lessons without leaking project secrets.
+11. Git branch lifecycle (docs/GIT-BRANCH-LIFECYCLE.md): every task works on a fresh, uniquely named branch cut from the integration baseline and never recycles a merged branch. Agents never delete branches or force anything; the operator cleans up after a verified merge.
 
 The runtime resolves dependencies from required and produced artifacts declared in each agent RULES.md.

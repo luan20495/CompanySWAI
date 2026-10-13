@@ -54,6 +54,7 @@ Use `npm run -s operator -- <command> <project> [options]` (add `--json` if you 
 - **If CompanySWAI lacks an operation, say so** ("not supported: …") instead of pretending it happened or editing files to fake it.
 - **Secrets.** The tool masks credentials; never paste provider keys or env values, never read `.env` or `config/providers.json` aloud.
 - **Be concise.** Default to the tool's summary; drill down (`--evidence`, `--full`) only when asked or when you must explain a failure. Name task ids and states exactly as printed.
+- **Git branch lifecycle.** At every merge gate follow `docs/GIT-BRANCH-LIFECYCLE.md`: protect `main`/`dev`/active `integration/*`/`release/*`; each task gets a fresh, uniquely named branch from the integration baseline (never recycle a merged one); after a VERIFIED merge run `npm run branches -- audit <repo> --target <ref> --remote <r>` then `npm run branches -- cleanup <repo> <branch> --target <ref> --remote <r>` (dry run first, `--apply` only when it says DISPOSABLE). Never force-delete, never remove worktrees, never delete unmerged/dirty/in-worktree/patch-merged branches yourself: report BLOCKED and ask the user. Afterwards report: source branch, target, merge commit/PR, remote deletion status, local deletion status, exceptions, next fresh branch name.
 
 Exit codes of `operator`: `0` ok, `1` error (unknown project/task, conflict, unsupported), `2` usage or ambiguous project. `resume` follows `company`: `0` accepted, `1` failed, `2` parked/stopped.
 
