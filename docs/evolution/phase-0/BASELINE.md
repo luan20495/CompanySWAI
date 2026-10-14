@@ -57,7 +57,8 @@
 | `accepted_runs_per_busy_hour` | 14.58 /h | 309 / 21.19 h | busy = union of attempt intervals; runs are mostly single-task micro-runs |
 | `dispatch_gap_ms` | 115h 44m | — | idle time between attempts (inside or between runs); includes the 3-day gap between 10-08 and 10-11 |
 | `interventions_per_accepted_run` | UNKNOWN | — | no log before Phase 0 |
-| `known_cost` | UNKNOWN | — | 775 subscription attempts have no per-call price |
+| `estimated_metered_cost` | UNKNOWN | — | no metered attempt with a configured price; 775 subscription attempts excluded (no per-call price) |
+| `billed_cost` | UNKNOWN | — | no billing source exists; estimates and subscription usage are never presented as billed money |
 | `skill_outcome_effect` | NOT AVAILABLE | — | Phase 4 |
 | `repeated_error_rate` | NOT AVAILABLE | — | Phase 5 |
 | `model_escalation_success` | NOT AVAILABLE | — | Phase 6 |

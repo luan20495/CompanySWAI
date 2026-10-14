@@ -20,7 +20,7 @@
 | Attempts and retries | One attempt per execution-record id (STARTED/CHECKPOINTED/terminal lines counted once); first vs last attempt per task | test "each attempt counts once" |
 | Review and QA results | Review verdicts (store), QA verdict via the engine's `parseQa`; `QA_CONFLICT` flag when ACCEPTED contradicts QA FAIL/BLOCKED — **detection only**, verdicts unchanged (Phase 1) | test "QA conflict" |
 | Token usage + unknown explicit | `tokenSource` (`reported` / `estimated` / `partial`) and cache creation/read recorded by providers and runner; scorecard keeps reported, fixture-estimated and unknown separate | tests "token sources stay separate", "token provenance across repair rounds" |
-| Measured tokens vs estimates vs subscription charge | Reported tokens shown; dry-run estimates labelled NOT real; money = known metered cost or UNKNOWN for subscription (never 0) | metric `known_cost` |
+| Measured tokens vs estimates vs subscription charge | Reported tokens shown (physical input incl. prompt cache); dry-run estimates labelled NOT real; money split into `estimated_metered_cost` (tokens × configured nominal prices, labelled an estimate, `costBasis` recorded on new records) and `billed_cost` (UNKNOWN: no billing source); subscription usage UNKNOWN, never 0 | metrics `estimated_metered_cost`, `billed_cost`; test "cost honesty" |
 | Human intervention logging | `interventions.jsonl` (append-only, actor self-declared, `actorVerified:false`), written automatically by `company`, `approve`, `experience`, `takeover approve`, operator `stop`/`resume`/`priority --apply`; `npm run intervene` for manual actions | tests "commands record interventions", "operator stop records … only when requested" |
 | Phase and release acceptance status | `docs/evolution/phases.json` printed by the scorecard; release readiness explicitly `NOT TRACKED (Phase 7)` | scorecard output |
 | Plan provenance (minimal) | `provenance: {source: brief|supplied-plan, lessonsInjected, lessonsAvailable}` on new runs; older runs derived from hashes and labelled `derived` | tests "provenance", "a supplied plan is recorded as such" |
@@ -51,7 +51,8 @@ Changed (additive): `src/run-store.ts` (optional `companyVersion`, `provenance`)
 |---|---|
 | Baseline before any change (`npm run check` at `3ecdab1`, isolated worktree) | typecheck OK, **320/320** pass |
 | After Phase 0, first submission `1c1cefe` | typecheck OK, 342/342 pass (320 existing + 22 new) |
-| After review round 1 (`nice -n 15 npm run check`) | typecheck OK, **348/348** pass (320 existing + 28 new), 0 fail, 0 skipped |
+| After review round 1 `c8e8a53` | typecheck OK, 348/348 pass (320 existing + 28 new) |
+| After review round 2 (`nice -n 15 npm run check`) | typecheck OK, **350/350** pass (320 existing + 30 new), 0 fail, 0 skipped |
 | Read-only proof on real data | scorecard over the live state twice before the isolation gate: tree hash identical before/after; afterwards only a private snapshot was read |
 
 ## 5. Before / after
@@ -88,7 +89,7 @@ npm run scorecard -- --state-dir /tmp/cswai-snapshot                            
 npm run scorecard -- --state-dir /tmp/cswai-snapshot --baseline                       # audit claims recomputed
 npm run intervene -- manual --project demo --detail "UAT check" --actor owner --state-dir /tmp/cswai-uat   # writes only to /tmp
 npm run intervene -- list --state-dir /tmp/cswai-uat
-nice -n 15 npm run check                                                              # 348 tests
+nice -n 15 npm run check                                                              # 350 tests
 ```
 
 Expected: fixture overview shows 1 QA conflict, 1 failed task (devops-sre, gate failure), separate reported/estimated/unknown tokens, 2 capacity pauses, interventions "7 recorded since 2026-01-13 … 5 attributed, 2 not attributable", `demo-running` as INTERRUPTED (its pid is not alive outside the test); baseline shows C1 340/341, C2 0/341, C3 20/20.
@@ -99,7 +100,8 @@ Expected: fixture overview shows 1 QA conflict, 1 failed task (devops-sre, gate 
 - QA verdicts are what the QA agent wrote; the scorecard parses, it does not verify them.
 - Derived plan source can be wrong for replanned/reprioritised supplied plans (labelled `derived`).
 - `dispatch_gap_ms` includes intentional idle time.
-- Interventions are only as complete as what people record for actions outside the engine.
+- Interventions are only as complete as what people record for actions outside the engine; an action after a run ended (e.g. a manual re-dispatch under a new project id) is reported as unattributed, not charged to the old run.
+- Money: only nominal-rate estimates exist (no cache discounts; unreported usage priced at 0 by the runner — excluded by the scorecard); billed cost is UNKNOWN. Budget gates still use those estimates (unchanged from `main`).
 
 ## 9. Security risks
 
@@ -119,7 +121,7 @@ Do not merge, or revert the branch's commits. State written by this branch stays
 3. **Failures now preventable:** none prevented; ACCEPTED-with-QA-FAIL is now *detected* automatically (prevention is Phase 1).
 4. **Faster / more accurate:** not claimed; Phase 0 changes measurement only.
 5. **New risks / overhead:** one extra JSONL file, two read-only git calls per new run, an extra command; unverified actors.
-6. **Evidence:** 348/348 tests, golden fixture, baseline replay with numerators/denominators, read-only hash proof.
+6. **Evidence:** 350/350 tests, golden fixture, baseline replay with numerators/denominators, read-only hash proof.
 7. **Easier or harder to operate:** easier to observe; nothing extra is required to operate.
 8. **Next:** Phase 1 — make QA/reviewer verdicts authoritative (the 20/20 conflict), review-before-integration, request-bound approvals, cross-process locks.
 
@@ -136,8 +138,22 @@ Do not merge, or revert the branch's commits. State written by this branch stays
 
 Historical baseline effect: busy time 24h 43m → 21h 12m, accepted runs per busy hour 12.5 → 14.58, idle time 112h 12m → 115h 44m; no capacity pauses existed; all other baseline numbers unchanged.
 
-## 13. Rejected approaches
+## 13. Review round 2 (PR #11) — findings and fixes
+
+| Finding | Fix | Regression test |
+|---|---|---|
+| ChatGPT: intervention attribution had no upper bound — a later event for the same project was attached to a finished run | Per-run window `[start − 10 min (dispatch/replan only), end]`; end = final verdict time (updated on every pass), else last run-state write, else last activity; only a live engine extends to `now`. After-run, before-run, future, invalid, project-less, out-of-view and unknown-window entries are unattributed with a reason (`unattributedReasons`); each run reports its `interventionWindow` | "interventions are attributed by per-run time windows …" (12 cases incl. reopen without a new epoch), "a finished run does not absorb later interventions …" (metric numerator + coverage), fixture: the post-run manual re-dispatch of `demo-failed-timeout` is now unattributed |
+| ChatGPT: the round-1 Anthropic fix made `actualCost` (a nominal-rate estimate used by budget gates) price cache tokens at the full input rate — an unapproved budget behaviour change | Reverted: Anthropic `inputTokens` keeps its pre-Phase-0 meaning (uncached input), so budgets and approvals price exactly what `main` prices. Cache parts are kept with `cacheTokensInInput:false`; the scorecard adds them back for **physical** input. New records carry `costBasis:"nominal-rate-estimate"`; the scorecard shows `estimated_metered_cost` (labelled estimate) and `billed_cost` (UNKNOWN) instead of "known cost" | "direct Anthropic responses keep prompt-cache tokens without changing what budgets price", "cost honesty …" (cached/uncached/absent usage: actualCost identical to pre-P0 formula, physical input 1000, estimate labelled, billed UNKNOWN) |
+| (found while testing) the runner prices attempts with unreported usage at 0 | Not changed in P0 (budget semantics); the scorecard excludes such attempts from the estimate and counts them | same test (`1 priced attempt(s) with unreported usage excluded`) |
+
+Behaviour versus `main` after this round: **no change to budgets, approvals, provider selection or execution**. Remaining differences are additive metadata (`tokenSource`, cache fields, `cacheTokensInInput`, `costBasis`, run `companyVersion`/`provenance`) and the intervention log. Historical baseline numbers are unchanged by this round (cost metrics were and remain UNKNOWN; there were no interventions).
+
+Known limitations carried to later phases (not changed in P0): budget gates use nominal-rate estimates without cache discounts and treat unreported usage as 0 cost; operator `usage` still labels the nominal-rate sum "known cost". Changing either alters budget/approval behaviour and needs `[OWNER-APPROVAL-REQUIRED]` (candidate: Phase 1 governance or Phase 6 resource economics).
+
+## 14. Rejected approaches
 
 - Extending `operator` views instead of a new command: they load per-task checkpoints/approvals and the store `list()` that quarantines (writes); a separate strictly read-only reader was safer.
 - Identifying QA tasks by role name: violates the Markdown-first rule (a guard test caught it); QA is detected by contract (`qa-traceability`) or by a `## QA Status` section.
 - Counting `inputTokens = 0` as zero usage: it also meant "not reported"; replaced by explicit token sources.
+- Making Anthropic `inputTokens` include cache tokens (round 1): correct as physical usage but it silently changed budget pricing; replaced by a flag and scorecard-side accounting (round 2).
+- Attributing interventions by project id with only a lower bound (round 1): attached later actions to finished runs; replaced by per-run windows (round 2).

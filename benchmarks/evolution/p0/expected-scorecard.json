@@ -121,7 +121,12 @@
       "qaConflict": false,
       "failures": [],
       "issues": [],
-      "skillsSelected": {}
+      "skillsSelected": {},
+      "interventionWindow": {
+        "from": "2026-01-10T09:00:00.000Z",
+        "to": "2026-01-10T09:20:00.000Z",
+        "basis": "final"
+      }
     },
     {
       "projectId": "demo-dryrun",
@@ -195,6 +200,11 @@
       "failures": [],
       "issues": [],
       "skillsSelected": {},
+      "interventionWindow": {
+        "from": "2026-01-14T07:00:00.000Z",
+        "to": "2026-01-14T07:02:00.000Z",
+        "basis": "final"
+      },
       "interventions": 1
     },
     {
@@ -279,7 +289,12 @@
         "1 unreadable execution log line(s)"
       ],
       "skillsSelected": {},
-      "interventions": 2
+      "interventionWindow": {
+        "from": "2026-01-13T08:00:00.000Z",
+        "to": "2026-01-13T08:40:00.000Z",
+        "basis": "final"
+      },
+      "interventions": 1
     },
     {
       "projectId": "demo-parked",
@@ -353,6 +368,11 @@
       "failures": [],
       "issues": [],
       "skillsSelected": {},
+      "interventionWindow": {
+        "from": "2026-01-15T08:00:00.000Z",
+        "to": "2026-01-15T10:06:00.000Z",
+        "basis": "final"
+      },
       "interventions": 1
     },
     {
@@ -432,7 +452,12 @@
       "qaConflict": true,
       "failures": [],
       "issues": [],
-      "skillsSelected": {}
+      "skillsSelected": {},
+      "interventionWindow": {
+        "from": "2026-01-12T14:00:00.000Z",
+        "to": "2026-01-12T14:10:00.000Z",
+        "basis": "final"
+      }
     },
     {
       "projectId": "demo-running",
@@ -526,6 +551,11 @@
       "failures": [],
       "issues": [],
       "skillsSelected": {},
+      "interventionWindow": {
+        "from": "2026-01-20T12:00:00.000Z",
+        "to": "2026-01-20T12:30:00.000Z",
+        "basis": "live"
+      },
       "interventions": 1
     },
     {
@@ -599,7 +629,12 @@
       "qaConflict": false,
       "failures": [],
       "issues": [],
-      "skillsSelected": {}
+      "skillsSelected": {},
+      "interventionWindow": {
+        "from": "2026-01-11T10:00:00.000Z",
+        "to": "2026-01-11T10:40:00.000Z",
+        "basis": "final"
+      }
     }
   ],
   "metrics": [
@@ -781,25 +816,38 @@
       "name": "Human interventions per accepted run",
       "unit": "per-run",
       "status": "MEASURED",
-      "value": 2.5,
-      "numerator": 5,
+      "value": 2,
+      "numerator": 4,
       "denominator": 2,
-      "coverage": "4 run(s) started after the log began (2026-01-13T07:59:00.000Z); 2 intervention(s) not attributable to a run in view",
+      "coverage": "4 run(s) started after the log began (2026-01-13T07:59:00.000Z); 3 intervention(s) not attributable to a run in view",
       "source": "interventions.jsonl (Phase 0+)",
       "limitations": "Actors are self-declared; manual actions outside the engine count only if someone records them."
     },
     {
-      "id": "known_cost",
-      "name": "Known money cost",
+      "id": "estimated_metered_cost",
+      "name": "Estimated metered cost (nominal rates)",
       "unit": "count",
       "status": "UNKNOWN",
       "value": null,
       "numerator": null,
       "denominator": null,
-      "coverage": "0 metered attempt(s) with a cost; 13 subscription attempt(s) UNKNOWN",
-      "reason": "no metered attempt with a recorded cost (subscription usage has no price)",
-      "source": "executions records",
-      "limitations": "Subscription runs have no per-call price: their cost is UNKNOWN, never 0."
+      "coverage": "0 metered attempt(s) priced at configured nominal rates (0 recorded, 0 derived); 0 priced attempt(s) with unreported usage excluded; 13 subscription attempt(s) excluded",
+      "reason": "no metered attempt with a configured price",
+      "source": "executions records (actualCost, costBasis)",
+      "limitations": "Applies one input price to all input tokens of the provider's inputTokens: cache discounts are not modelled, and for the Anthropic Messages API cache tokens are not in inputTokens at all. Attempts whose usage was not reported are excluded (the runner records 0 for them). Subscription runs are excluded (no per-call price)."
+    },
+    {
+      "id": "billed_cost",
+      "name": "Billed cost",
+      "unit": "count",
+      "status": "UNKNOWN",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "coverage": "0 attempt(s) with a billed amount",
+      "reason": "no provider billing source: estimates and subscription usage are never presented as billed money",
+      "source": "executions records (costBasis = billed)",
+      "limitations": "No billing integration exists: this is UNKNOWN until one does. Estimates and subscription usage are never counted here."
     },
     {
       "id": "skill_outcome_effect",
@@ -854,8 +902,13 @@
     "logExists": true,
     "since": "2026-01-13T07:59:00.000Z",
     "total": 7,
-    "attributed": 5,
-    "unattributed": 2,
+    "attributed": 4,
+    "unattributed": 3,
+    "unattributedReasons": {
+      "after-run": 1,
+      "before-run": 1,
+      "no-project": 1
+    },
     "unreadable": 0,
     "byKind": {
       "dispatch": 5,

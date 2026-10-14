@@ -32,7 +32,9 @@ export type AttemptStatus="SUCCEEDED"|"FAILED"|"PAUSED_CAPACITY"|"IN_FLIGHT";
 export type AttemptFact={
  id:string;taskId:string;kind:"maker"|"review";role:string;provider:string;model:string;status:AttemptStatus;startedAt:string;finishedAt?:string;durationMs?:number;
  inputTokens:number;outputTokens:number;cacheReadInputTokens?:number;cacheCreationInputTokens?:number;token:{class:TokenClass;basis:Basis};
- billing:string;cost?:number;gates:Array<{name:string;status:string}>;error?:string;
+ billing:string;
+ /** Money for this attempt and what it is: tokens × configured nominal prices (an estimate, never a bill) or a billed amount. */
+ cost?:number;costBasis?:{value:"nominal-rate-estimate"|"billed";basis:Basis};gates:Array<{name:string;status:string}>;error?:string;
 };
 export type QaVerdict="PASS"|"FAIL"|"BLOCKED"|"NOT_APPLICABLE"|"UNPARSED";
 export type TaskFact={
@@ -54,6 +56,8 @@ export type RunFact={
  capacityPauses:number;tokens:TokenTally;knownCost:number;subscriptionAttempts:number;
  reviewVerdicts:{pass:number;changesRequired:number};qa:Array<{taskId:string;verdict:QaVerdict}>;qaConflict:boolean;
  failures:Array<{taskId:string;role:string;reason:string;at?:string}>;interventions?:number;issues:string[];
+ /** The interval interventions were matched against (see attributeInterventions). */
+ interventionWindow?:{from?:string;to?:string;basis:RunWindow["basis"]};
  skillsSelected:Record<string,number>;
 };
 export type MetricResult={
@@ -67,7 +71,7 @@ export type Scorecard={
  checkout?:CompanyVersionValue;program?:{name:string;phases:ProgramPhase[]};
  totals:{projects:number;runs:number;byFinal:Record<string,number>;running:number;attempts:number;makerTasks:number};
  runs:RunFact[];metrics:MetricResult[];
- interventions:{logExists:boolean;since?:string;total:number;attributed:number;unattributed:number;unreadable:number;byKind:Record<string,number>};
+ interventions:{logExists:boolean;since?:string;total:number;attributed:number;unattributed:number;unattributedReasons:Partial<Record<UnattributedReason,number>>;unreadable:number;byKind:Record<string,number>};
  coverage:{capacityPauses:number;unreadableLogLines:number;runsWithoutState:number;runsWithoutPlan:number;unreadableRunFiles:number;attemptsWithoutFinish:number;estimatedTokenAttempts:number;unknownTokenAttempts:number;provenanceRecorded:number;versionRecorded:number};
 };
 
@@ -123,9 +127,10 @@ export function foldAttempts(records:ExecutionRecordValue[]):AttemptFact[]{
   out.push({
    id:last.id,taskId:last.taskId,kind:isReview(last.taskId)?"review":"maker",role:last.agentRole,provider:last.provider,model:last.model,status,
    startedAt:lines[0].startedAt,finishedAt,durationMs:ms(lines[0].startedAt,finishedAt),
-   inputTokens:token.class==="unknown"?0:usage.inputTokens,outputTokens:token.class==="unknown"?0:usage.outputTokens,
+   // Physical input: providers whose inputTokens excludes prompt-cache tokens (Anthropic Messages API) get them added back here.
+   inputTokens:token.class==="unknown"?0:usage.inputTokens+(usage.cacheTokensInInput===false?(usage.cacheCreationInputTokens??0)+(usage.cacheReadInputTokens??0):0),outputTokens:token.class==="unknown"?0:usage.outputTokens,
    cacheReadInputTokens:usage.cacheReadInputTokens,cacheCreationInputTokens:usage.cacheCreationInputTokens,token,
-   billing:last.billing,cost:last.actualCost,gates:last.gates.map(g=>({name:g.name,status:g.status})),error:last.error?reason(last.error):undefined
+   billing:last.billing,cost:last.actualCost,costBasis:last.actualCost==null?undefined:last.costBasis?{value:last.costBasis,basis:"recorded"}:{value:"nominal-rate-estimate",basis:"derived"},gates:last.gates.map(g=>({name:g.name,status:g.status})),error:last.error?reason(last.error):undefined
   });
  }
  return out.sort((a,b)=>a.startedAt.localeCompare(b.startedAt)||a.id.localeCompare(b.id));
@@ -263,7 +268,10 @@ function computeMetrics(runs:RunFact[],loaded:Map<string,Loaded>,interventions:{
  const activity=union(intervals);
  const covered=runs.filter(r=>r.interventions!==undefined),coveredAccepted=covered.filter(r=>r.final&&ACCEPTED.has(r.final));
  const attributed=covered.reduce((n,r)=>n+(r.interventions??0),0);
- const metered=allAttempts.filter(a=>a.billing==="metered"&&a.cost!=null),subscription=allAttempts.filter(a=>a.billing==="subscription");
+ const priced=allAttempts.filter(a=>a.billing==="metered"&&a.cost!=null),subscription=allAttempts.filter(a=>a.billing==="subscription");
+ // A runner cost computed from unreported usage (0 tokens) is "0 at nominal rates" for an unknown amount: excluded, and counted.
+ const estimated=priced.filter(a=>a.costBasis?.value!=="billed"&&a.token.class!=="unknown"),billed=priced.filter(a=>a.costBasis?.value==="billed");
+ const pricedUnknown=priced.filter(a=>a.costBasis?.value!=="billed"&&a.token.class==="unknown").length;
  const tokenCoverage=finishedAttempts.length?reportedAll.length+"/"+finishedAttempts.length+" finished attempts have provider-reported usage":undefined;
  return [
   metric("accepted_run_rate",{numerator:accepted.length,denominator:finished.length,value:ratio(accepted.length,finished.length)}),
@@ -282,27 +290,45 @@ function computeMetrics(runs:RunFact[],loaded:Map<string,Loaded>,interventions:{
   metric("accepted_runs_per_busy_hour",{numerator:accepted.length,denominator:Number((activity.covered/3_600_000).toFixed(3)),value:activity.covered>0?Number((accepted.length/(activity.covered/3_600_000)).toFixed(2)):null}),
   metric("dispatch_gap_ms",{numerator:activity.gap,denominator:null,value:intervals.length>1?activity.gap:null,reason:intervals.length>1?undefined:"fewer than two attempts"}),
   metric("interventions_per_accepted_run",interventions.exists&&interventions.since?{numerator:attributed,denominator:coveredAccepted.length,value:ratio(attributed,coveredAccepted.length),coverage:covered.length+" run(s) started after the log began ("+interventions.since+"); "+interventions.unattributed+" intervention(s) not attributable to a run in view",reason:coveredAccepted.length?undefined:"no accepted run started after the intervention log began"}:{value:null,reason:"no intervention log: interventions before Phase 0 were never recorded"}),
-  metric("known_cost",{numerator:null,denominator:null,value:metered.length?Number(metered.reduce((n,a)=>n+(a.cost??0),0).toFixed(6)):null,coverage:metered.length+" metered attempt(s) with a cost; "+subscription.length+" subscription attempt(s) UNKNOWN",reason:metered.length?undefined:"no metered attempt with a recorded cost (subscription usage has no price)"}),
+  metric("estimated_metered_cost",{numerator:null,denominator:null,value:estimated.length?Number(estimated.reduce((n,a)=>n+(a.cost??0),0).toFixed(6)):null,coverage:estimated.length+" metered attempt(s) priced at configured nominal rates ("+estimated.filter(a=>a.costBasis?.basis==="recorded").length+" recorded, "+estimated.filter(a=>a.costBasis?.basis==="derived").length+" derived); "+pricedUnknown+" priced attempt(s) with unreported usage excluded; "+subscription.length+" subscription attempt(s) excluded",reason:estimated.length?undefined:"no metered attempt with a configured price"}),
+  metric("billed_cost",{numerator:null,denominator:null,value:billed.length?Number(billed.reduce((n,a)=>n+(a.cost??0),0).toFixed(6)):null,coverage:billed.length+" attempt(s) with a billed amount",reason:billed.length?undefined:"no provider billing source: estimates and subscription usage are never presented as billed money"}),
   ...["skill_outcome_effect","repeated_error_rate","model_escalation_success","release_readiness"].map(id=>metric(id,{}))
  ];
 }
 
-/** A dispatch is recorded just before the run it starts; interventions this long before a run's start still belong to it. */
+/** A dispatch is recorded just before the run it starts; dispatch-like entries this long before a run's start still belong to it. */
 export const DISPATCH_GRACE_MS=10*60_000;
+const DISPATCH_KINDS=new Set(["dispatch","replan"]);
 const epoch=(iso:string|undefined,name:string)=>{if(iso===undefined)return undefined;const ms=Date.parse(iso);if(Number.isNaN(ms))throw new Error(name+" is not a valid timestamp: "+iso);return ms;};
+
+export type UnattributedReason="invalid-timestamp"|"future"|"no-project"|"project-not-in-view"|"run-time-unknown"|"before-run"|"after-run";
+/** The interval in which interventions can belong to a run. `to` is open (now) only while its engine is live. */
+export type RunWindow={projectId:string;from?:number;to?:number;basis:"final"|"run-state"|"activity"|"live"|"unknown"};
 /**
- * Interventions that belong to a run: same project id, recorded no earlier than DISPATCH_GRACE_MS before the run started.
- * (A project id names one run state, so later entries — approvals, resumes, a manual re-dispatch after a failure — are about it.)
- * Entries without a project, for projects not in view, or older than the run are left unattributed and reported as such.
+ * Attributes interventions to runs by project id AND time: an entry belongs to a run when it falls inside the run's window
+ * [start, end] — dispatch-like entries (dispatch, replan) may precede the start by DISPATCH_GRACE_MS. The end is the run's final
+ * verdict time (updated on every pass, so a resume that ran is inside it), else its last run-state write, else its last recorded
+ * activity; only a live engine extends to `now`. Anything else — after the run ended (a later reopen or manual action is not proof of
+ * a new epoch), before it, in the future, without a parseable timestamp, without a project, or for a project not in view — is
+ * unattributed, with the reason, never assumed.
  */
-export function attributeInterventions(runs:Array<{projectId:string;startedAt?:string}>,entries:InterventionValue[]){
- const byRun=new Map<string,number>(),used=new Set<string>();
- for(const r of runs){
-  const start=r.startedAt?Date.parse(r.startedAt):NaN;if(Number.isNaN(start))continue;
-  const mine=entries.filter(e=>e.projectId===r.projectId&&Date.parse(e.ts)>=start-DISPATCH_GRACE_MS);
-  byRun.set(r.projectId,mine.length);for(const e of mine)used.add(e.id);
+export function attributeInterventions(windows:RunWindow[],entries:InterventionValue[],now:number){
+ const byRun=new Map<string,number>(),reasons:Partial<Record<UnattributedReason,number>>={},ids=new Map(windows.map(w=>[w.projectId,w]));
+ const miss=(reason:UnattributedReason)=>{reasons[reason]=(reasons[reason]??0)+1;};
+ for(const w of windows)byRun.set(w.projectId,0);
+ for(const e of entries){
+  const t=Date.parse(e.ts);
+  if(Number.isNaN(t)){miss("invalid-timestamp");continue;}
+  if(t>now){miss("future");continue;}
+  if(!e.projectId){miss("no-project");continue;}
+  const w=ids.get(e.projectId);
+  if(!w){miss("project-not-in-view");continue;}
+  if(w.from===undefined||w.to===undefined){miss("run-time-unknown");continue;}
+  if(t<w.from-(DISPATCH_KINDS.has(e.kind)?DISPATCH_GRACE_MS:0)){miss("before-run");continue;}
+  if(t>w.to){miss("after-run");continue;}
+  byRun.set(w.projectId,byRun.get(w.projectId)!+1);
  }
- return {byRun,unattributed:entries.filter(e=>!used.has(e.id)).length};
+ return {byRun,unattributed:Object.values(reasons).reduce((a,b)=>a+(b??0),0),reasons};
 }
 
 export type ScorecardOptions={since?:string;until?:string;now?:number;isAlive?:(pid:number)=>boolean;checkout?:CompanyVersionValue;programPath?:string;projects?:string[]};
@@ -315,11 +341,21 @@ export async function buildScorecard(state:CompanyState,options:ScorecardOptions
  const log=await state.interventions.read();
  // Instants are compared as epoch milliseconds, never as strings ("…00Z" and "…00.000Z" or "+07:00" are the same instant).
  const sinceMs=epoch(options.since,"since"),untilMs=epoch(options.until,"until");
- const logStart=log.entries.length?Math.min(...log.entries.map(e=>Date.parse(e.ts))):undefined,since=logStart!==undefined?new Date(logStart).toISOString():undefined;
+ const stamps=log.entries.map(e=>Date.parse(e.ts)).filter(t=>Number.isFinite(t)&&t<=now);
+ const logStart=stamps.length?Math.min(...stamps):undefined,since=logStart!==undefined?new Date(logStart).toISOString():undefined;
  let runs=[...loaded.values()].map(p=>buildRun(p,{now,isAlive:options.isAlive}));
  if(sinceMs!==undefined||untilMs!==undefined)runs=runs.filter(r=>{const t=r.startedAt?Date.parse(r.startedAt):NaN;return !Number.isNaN(t)&&(sinceMs===undefined||t>=sinceMs)&&(untilMs===undefined||t<untilMs);});
- const attribution=attributeInterventions(runs,log.entries);
- for(const r of runs){const t=r.startedAt?Date.parse(r.startedAt):NaN;r.interventions=logStart!==undefined&&!Number.isNaN(t)&&t>=logStart-DISPATCH_GRACE_MS?attribution.byRun.get(r.projectId)??0:undefined;}
+ const windows:RunWindow[]=runs.map(r=>{
+  const run=loaded.get(r.projectId)!.run,from=r.startedAt?Date.parse(r.startedAt):NaN;
+  if(Number.isNaN(from))return {projectId:r.projectId,basis:"unknown"};
+  if(r.engine.state==="RUNNING")return {projectId:r.projectId,from,to:now,basis:"live"};
+  const end=run?.final?.at??run?.updatedAt??r.endedAt,basis:RunWindow["basis"]=run?.final?.at?"final":run?.updatedAt?"run-state":"activity";
+  const to=end?Date.parse(end):NaN;
+  return Number.isNaN(to)?{projectId:r.projectId,from,basis:"unknown"}:{projectId:r.projectId,from,to:Math.max(from,to),basis};
+ });
+ const attribution=attributeInterventions(windows,log.entries,now);
+ for(const [i,r] of runs.entries()){const w=windows[i];r.interventionWindow={from:w.from!==undefined?new Date(w.from).toISOString():undefined,to:w.to!==undefined?new Date(w.to).toISOString():undefined,basis:w.basis};
+  r.interventions=logStart!==undefined&&w.from!==undefined&&w.to!==undefined&&w.from>=logStart-DISPATCH_GRACE_MS?attribution.byRun.get(r.projectId)??0:undefined;}
  const allAttempts=runs.flatMap(r=>foldAttempts(loaded.get(r.projectId)!.records));
  const byFinal:Record<string,number>={};for(const r of runs){const k=r.final??(r.engine.state==="RUNNING"?"RUNNING":"NO_FINAL_STATUS");byFinal[k]=(byFinal[k]??0)+1;}
  const byKind:Record<string,number>={};for(const e of log.entries)byKind[e.kind]=(byKind[e.kind]??0)+1;
@@ -331,7 +367,7 @@ export async function buildScorecard(state:CompanyState,options:ScorecardOptions
   window:{since:sinceMs!==undefined?new Date(sinceMs).toISOString():undefined,until:untilMs!==undefined?new Date(untilMs).toISOString():undefined,firstActivity:times[0],lastActivity:times.at(-1)},checkout:options.checkout,program,
   totals:{projects:ids.length,runs:runs.length,byFinal,running:runs.filter(r=>r.engine.state==="RUNNING").length,attempts:allAttempts.length,makerTasks:runs.reduce((n,r)=>n+r.tasks.filter(t=>t.attempts>0).length,0)},
   runs,metrics:computeMetrics(runs,loaded,{exists:log.exists,since,unattributed:attribution.unattributed},now),
-  interventions:{logExists:log.exists,since,total:log.entries.length,attributed:[...attribution.byRun.values()].reduce((a,b)=>a+b,0),unattributed:attribution.unattributed,unreadable:log.unreadable,byKind},
+  interventions:{logExists:log.exists,since,total:log.entries.length,attributed:[...attribution.byRun.values()].reduce((a,b)=>a+b,0),unattributed:attribution.unattributed,unattributedReasons:attribution.reasons,unreadable:log.unreadable,byKind},
   coverage:{
    capacityPauses:runs.reduce((n,r)=>n+r.capacityPauses,0),
    unreadableLogLines:runs.reduce((n,r)=>n+loaded.get(r.projectId)!.unreadable,0),

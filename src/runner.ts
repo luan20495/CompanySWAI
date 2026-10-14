@@ -36,6 +36,8 @@ export class ContractViolationError extends Error{
 }
 
 const REPAIR_ECHO_CHARS=12000,MAX_REPAIR_ROUNDS=2;
+/** Every cost the runner computes is tokens × configured nominal prices: an estimate, never a bill. */
+const costBasisOf=(cost:number|undefined)=>cost!=null?{costBasis:"nominal-rate-estimate" as const}:{};
 /** Token provenance over every provider call of one attempt (the first answer plus its repair rounds). */
 function usageOf(first:ModelResponse){
  const calls=[first];
@@ -45,7 +47,8 @@ function usageOf(first:ModelResponse){
    const sources=new Set(calls.map(c=>c.tokenSource));
    const tokenSource=sources.size===1?[...sources][0]:"partial" as const;
    const sum=(pick:(c:ModelResponse)=>number|undefined)=>calls.some(c=>pick(c)!=null)?calls.reduce((n,c)=>n+(pick(c)??0),0):undefined;
-   return {tokenSource,cacheCreationInputTokens:sum(c=>c.cacheCreationInputTokens),cacheReadInputTokens:sum(c=>c.cacheReadInputTokens)};
+   const included=new Set(calls.filter(c=>c.cacheTokensInInput!==undefined).map(c=>c.cacheTokensInInput));
+   return {tokenSource,cacheCreationInputTokens:sum(c=>c.cacheCreationInputTokens),cacheReadInputTokens:sum(c=>c.cacheReadInputTokens),cacheTokensInInput:included.size===1?[...included][0]:undefined};
   }
  };
 }
@@ -98,11 +101,12 @@ export class TaskRunner{
    }
    if(problems.length){
     const failedAt=new Date().toISOString(),error=new ContractViolationError(problems),actualCost=this.cost(task,inputTokens,outputTokens);
-    await this.state.executions.append({...base,model:answeredBy??base.model,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,...usage.fields(),actualCost,error:error.message});
+    await this.state.executions.append({...base,model:answeredBy??base.model,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,...usage.fields(),actualCost,...costBasisOf(actualCost),error:error.message});
     await this.state.memory.recordStatus(task.projectId,task.taskId,"FAILED",error.message);
     throw error;
    }
-   return await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,...usage.fields(),actualCost:this.cost(task,inputTokens,outputTokens)});
+   const actualCost=this.cost(task,inputTokens,outputTokens);
+   return await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,...usage.fields(),actualCost,...costBasisOf(actualCost)});
   }catch(error){
    if(!(error instanceof ContractViolationError)){
     const message=redactError(error);
@@ -159,7 +163,7 @@ export class TaskRunner{
 
  async finalize(task:RunTask,checkpointed:ExecutionRecordValue):Promise<ExecutionRecordValue>{
   const {state}=this,id=checkpointed.id,output=checkpointed.output,finishedAt=new Date().toISOString();
-  const base={...this.base({...task,estimatedCost:task.estimatedCost??checkpointed.estimatedCost},id,checkpointed.startedAt,{name:checkpointed.provider,model:checkpointed.model}),inputTokens:checkpointed.inputTokens,outputTokens:checkpointed.outputTokens,tokenSource:checkpointed.tokenSource,cacheCreationInputTokens:checkpointed.cacheCreationInputTokens,cacheReadInputTokens:checkpointed.cacheReadInputTokens,actualCost:checkpointed.actualCost};
+  const base={...this.base({...task,estimatedCost:task.estimatedCost??checkpointed.estimatedCost},id,checkpointed.startedAt,{name:checkpointed.provider,model:checkpointed.model}),inputTokens:checkpointed.inputTokens,outputTokens:checkpointed.outputTokens,tokenSource:checkpointed.tokenSource,cacheCreationInputTokens:checkpointed.cacheCreationInputTokens,cacheReadInputTokens:checkpointed.cacheReadInputTokens,cacheTokensInInput:checkpointed.cacheTokensInInput,actualCost:checkpointed.actualCost,costBasis:checkpointed.costBasis};
   try{
    const patches=task.kind==="maker"?parseFilePatches(output):[];
    let changedFiles:string[]=[],commitSha:string|undefined,evidence:string[]=[],gates:GateResult[]=[];

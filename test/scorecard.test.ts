@@ -6,8 +6,10 @@ import {appendFile,mkdir,readdir,readFile,writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {promisify} from "node:util";
 import {CompanyState} from "../src/state.js";
-import {DISPATCH_GRACE_MS,attributeInterventions,baselineClaims,buildScorecard,countCapacityPauses,foldAttempts,type Scorecard} from "../src/scorecard.js";
-import {Intervention} from "../src/intervention-log.js";
+import {attributeInterventions,baselineClaims,buildScorecard,countCapacityPauses,foldAttempts,type Scorecard} from "../src/scorecard.js";
+import {Intervention,InterventionLog} from "../src/intervention-log.js";
+import {ProjectOrchestrator} from "../src/orchestrator.js";
+import {ProjectPlan} from "../src/project.js";
 import {ExecutionRecord} from "../src/execution-record.js";
 import {AnthropicProvider} from "../src/providers/anthropic.js";
 import {renderBaseline,renderProject,renderScorecard} from "../src/scorecard-render.js";
@@ -15,7 +17,7 @@ import {METRICS} from "../src/metric-catalog.js";
 import {clearRegisteredSecrets,registerSecret} from "../src/secrets.js";
 import {FIXTURE_NOW,RUNNING_PID,buildFixture} from "../benchmarks/evolution/p0/fixture.js";
 import {EXPECTED,FIXTURE_DIR,METRICS_DOC,goldenScorecard,metricsDoc} from "../benchmarks/evolution/p0/build.js";
-import {fakeAnthropicKey,tmpDir} from "./helpers.js";
+import {compliant,fakeAnthropicKey,plan,selectorFor,task,tmpDir,tmpState} from "./helpers.js";
 
 const execFileAsync=promisify(execFile);
 const alive=(pid:number)=>pid===RUNNING_PID;
@@ -71,7 +73,8 @@ test("token sources stay separate: provider-reported, fixture-estimated and unkn
  assert.deepEqual([brief.tokens.reported.cacheRead,brief.tokens.reported.cacheCreation],[12000,1000]);
  assert.equal(metricOf(c,"reported_tokens").value,182900,"dry-run estimates are not counted as usage");
  assert.match(metricOf(c,"reported_tokens").coverage??"",/11\/13 finished attempts/);
- assert.equal(metricOf(c,"known_cost").status,"UNKNOWN","subscription usage has no price: UNKNOWN, never 0");
+ assert.equal(metricOf(c,"estimated_metered_cost").status,"UNKNOWN","subscription usage has no price: UNKNOWN, never 0");
+ assert.equal(metricOf(c,"billed_cost").status,"UNKNOWN","nothing is ever billed money without a billing source");
 });
 
 test("durations come from recorded timestamps, not from when the scorecard runs",async()=>{
@@ -115,8 +118,8 @@ test("failures say why and who; interventions are UNKNOWN before the log existed
  const c=await card(await freshFixture());
  assert.deepEqual(runOf(c,"demo-failed-timeout").failures.map(f=>[f.taskId,f.role,f.reason]),[["deploy","devops-sre","Gate 'unit-tests' failed: synthetic script error"]]);
  assert.equal(runOf(c,"demo-supplied-retry").interventions,undefined,"started before the log began: unknown, not 0");
- assert.equal(runOf(c,"demo-failed-timeout").interventions,2);
- const m=metricOf(c,"interventions_per_accepted_run");assert.deepEqual([m.numerator,m.denominator,m.value],[5,2,2.5]);
+ assert.equal(runOf(c,"demo-failed-timeout").interventions,1,"its dispatch; the manual re-dispatch came after the run ended");
+ const m=metricOf(c,"interventions_per_accepted_run");assert.deepEqual([m.numerator,m.denominator,m.value],[4,2,2]);
  const empty=await buildScorecard(new CompanyState(await tmpDir()),{now:FIXTURE_NOW});
  assert.equal(metricOf(empty,"interventions_per_accepted_run").status,"UNKNOWN");
 });
@@ -196,12 +199,35 @@ test("capacity pauses are not attempts: repeated park/resume leaves attempts, fi
  assert.deepEqual([fixture.capacityPauses,fixture.tasks[0].attempts,fixture.tasks[0].firstAttempt],[2,1,"SUCCEEDED"]);
 });
 
-test("direct Anthropic responses keep prompt-cache tokens, with and without caching (Codex P2)",async()=>{
+test("direct Anthropic responses keep prompt-cache tokens without changing what budgets price (Codex P2 + ChatGPT cost review)",async()=>{
  const client=(usage:Record<string,number|null>)=>({messages:{create:async()=>({content:[{type:"text",text:"ok"}],usage})}}) as never;
  const cached=await new AnthropicProvider(client({input_tokens:100,output_tokens:20,cache_creation_input_tokens:300,cache_read_input_tokens:600}),"m").generate({system:"s",prompt:"p",maxTokens:10});
- assert.deepEqual([cached.inputTokens,cached.cacheCreationInputTokens,cached.cacheReadInputTokens,cached.outputTokens,cached.tokenSource],[1000,300,600,20,"reported"],"inputTokens is the total input, cache parts kept");
+ assert.deepEqual([cached.inputTokens,cached.cacheCreationInputTokens,cached.cacheReadInputTokens,cached.cacheTokensInInput,cached.outputTokens,cached.tokenSource],[100,300,600,false,20,"reported"],"inputTokens keeps its pre-Phase-0 meaning; cache parts kept and flagged as not included");
  const plain=await new AnthropicProvider(client({input_tokens:100,output_tokens:20,cache_creation_input_tokens:null,cache_read_input_tokens:null}),"m").generate({system:"s",prompt:"p",maxTokens:10});
- assert.deepEqual([plain.inputTokens,plain.cacheCreationInputTokens,plain.cacheReadInputTokens],[100,undefined,undefined],"no caching: nothing invented");
+ assert.deepEqual([plain.inputTokens,plain.cacheCreationInputTokens,plain.cacheReadInputTokens,plain.cacheTokensInInput],[100,undefined,undefined,undefined],"no caching: nothing invented");
+});
+
+test("cost honesty: runner cost is a nominal-rate estimate on the unchanged token basis; scorecard shows physical input, estimate and UNKNOWN billed",async()=>{
+ const state=await tmpState(),price=[{id:"metered",inputCostPerMillion:3,outputCostPerMillion:15,maxConcurrency:2}];
+ const respond=(r:Record<string,unknown>)=>selectorFor(()=>({text:compliant(),...r}) as never,price);
+ // Anthropic-like (cache excluded from inputTokens), claude-code-like (included), and a provider that reports no usage.
+ await new ProjectOrchestrator(respond({inputTokens:100,outputTokens:20,tokenSource:"reported",cacheCreationInputTokens:300,cacheReadInputTokens:600,cacheTokensInInput:false}),state).run(ProjectPlan.parse(plan("anth",[task("a")])));
+ await new ProjectOrchestrator(respond({inputTokens:1000,outputTokens:20,tokenSource:"reported",cacheCreationInputTokens:300,cacheReadInputTokens:600,cacheTokensInInput:true}),state).run(ProjectPlan.parse(plan("cc",[task("a")])));
+ await new ProjectOrchestrator(respond({inputTokens:0,outputTokens:0}),state).run(ProjectPlan.parse(plan("none",[task("a")])));
+ const done=async(id:string)=>(await state.executions.list(id)).filter(r=>r.status==="SUCCEEDED")[0];
+ const anth=await done("anth"),cc=await done("cc");
+ const nominal=(input:number,output:number)=>input/1e6*3+output/1e6*15;
+ assert.equal(anth.actualCost,nominal(100,20),"budgets price exactly what they priced before Phase 0 (uncached input only for Anthropic)");
+ assert.equal(cc.actualCost,nominal(1000,20),"claude-code totals are unchanged too");
+ assert.deepEqual([anth.costBasis,anth.cacheTokensInInput,cc.cacheTokensInInput],["nominal-rate-estimate",false,true]);
+ const card_=await buildScorecard(state,{now:Date.now()});
+ const att=(id:string)=>card_.runs.find(r=>r.projectId===id)!.tokens;
+ assert.equal(att("anth").reported.input,1000,"physical input = 100 + 300 + 600");assert.equal(att("cc").reported.input,1000,"already included: not added twice");
+ assert.equal(att("none").unknownAttempts,1);
+ const est=metricOf(card_,"estimated_metered_cost"),billed=metricOf(card_,"billed_cost");
+ assert.equal(est.value,Number((nominal(100,20)+nominal(1000,20)).toFixed(6)));assert.match(est.coverage??"",/2 recorded, 0 derived\); 1 priced attempt\(s\) with unreported usage excluded/);
+ assert.deepEqual([billed.status,billed.value],["UNKNOWN",null]);
+ assert.match(renderScorecard(card_),/Money: billed UNKNOWN \(no billing source\); estimated at configured nominal rates [\d.]+ \(estimate, not a bill\)/);
 });
 
 test("time filters compare instants, not strings: equivalent forms match and the upper bound is exclusive (Codex P2)",async()=>{
@@ -217,24 +243,49 @@ test("time filters compare instants, not strings: equivalent forms match and the
  await assert.rejects(()=>buildScorecard(new CompanyState(dir),{since:"yesterday-ish"}),/not a valid timestamp/);
 });
 
-test("interventions are attributed per run by time: stale or project-less entries are not counted, repeat dispatches of the same run are",()=>{
+test("interventions are attributed by per-run time windows; anything outside is unattributed with a reason (ChatGPT follow-up)",()=>{
  const iv=(n:number,ts:string,projectId?:string,kind="dispatch")=>Intervention.parse({id:"iv"+n,ts,kind,...(projectId?{projectId}:{}),actor:"o",actorVerified:false,via:"t"});
- const runs=[{projectId:"r1",startedAt:"2026-03-01T10:00:00.000Z"},{projectId:"r2",startedAt:"2026-03-02T10:00:00.000Z"}];
- const entries=[
-  iv(1,"2026-02-20T10:00:00.000Z","r1"),                                   // weeks before r1: an older run of the same id
-  iv(2,new Date(Date.parse(runs[0].startedAt)-DISPATCH_GRACE_MS+1000).toISOString(),"r1"), // its dispatch, just before it started
-  iv(3,"2026-03-01T12:00:00.000Z","r1","resume"),iv(4,"2026-03-03T09:00:00.000Z","r1","redispatch"), // follow-ups on r1
-  iv(5,"2026-03-02T09:58:00.000Z","r2"),iv(6,"2026-03-02T11:00:00.000Z","other"),iv(7,"2026-03-02T11:00:00.000Z")
+ const D=(s:string)=>Date.parse(s),now=D("2026-03-10T00:00:00.000Z");
+ const windows=[
+  {projectId:"done",from:D("2026-01-01T10:00:00.000Z"),to:D("2026-01-02T10:00:00.000Z"),basis:"final" as const},
+  {projectId:"live",from:D("2026-03-09T10:00:00.000Z"),to:now,basis:"live" as const},
+  {projectId:"blind",basis:"unknown" as const}
  ];
- const {byRun,unattributed}=attributeInterventions(runs,entries);
- assert.deepEqual([...byRun.entries()],[["r1",3],["r2",1]]);
- assert.equal(unattributed,3,"stale r1 entry, unknown project, no project");
- const onlyR2=attributeInterventions([runs[1]],entries);
- assert.deepEqual([[...onlyR2.byRun.entries()],onlyR2.unattributed],[[["r2",1]],6],"a run filtered out of view lends none of its interventions to others");
+ const entries=[
+  iv(1,"2026-01-01T09:55:00.000Z","done"),                    // (1) dispatch within grace before start → attributed
+  iv(2,"2026-01-01T15:00:00.000Z","done","approval"),          // (2) approval during the run → attributed
+  iv(3,"2025-12-20T10:00:00.000Z","done"),                    // (3) dispatch long before → before-run
+  iv(4,"2026-01-01T09:55:00.000Z","done","approval"),          //     non-dispatch kind gets no grace → before-run
+  iv(5,"2026-03-01T10:00:00.000Z","done","manual"),            // (4) after the final verdict → after-run
+  iv(6,"2026-03-01T10:00:00.000Z","done","resume"),            // (7) reopen of a finished run with no new run epoch → after-run
+  iv(7,"2026-04-01T10:00:00.000Z","live"),                    // (5) future-dated → future
+  iv(8,"2026-03-09T12:00:00.000Z","live","stop"),              //     live run: open until now → attributed
+  iv(9,"2026-03-09T12:00:00.000Z","elsewhere"),               // (6) project filtered out / not in view
+  iv(10,"not-a-time","done"),                                 // (8) invalid timestamp
+  iv(11,"2026-03-09T12:00:00.000Z"),                           //     company-level, no project
+  iv(12,"2026-03-09T12:00:00.000Z","blind")                    //     run whose time cannot be established
+ ];
+ const {byRun,unattributed,reasons}=attributeInterventions(windows,entries,now);
+ assert.deepEqual([...byRun.entries()],[["done",2],["live",1],["blind",0]]);
+ assert.deepEqual(reasons,{"before-run":2,"after-run":2,future:1,"project-not-in-view":1,"invalid-timestamp":1,"no-project":1,"run-time-unknown":1});
+ assert.equal(unattributed,9);
 });
 
-test("fixture: the stale intervention for demo-parked and the company-level note stay unattributed",async()=>{
+test("a finished run does not absorb later interventions for its project: metric numerator and coverage (ChatGPT follow-up)",async()=>{
+ const dir=await oneProject("old","2026-01-01T10:00:00.000Z",[rec("a1","old","STARTED","2026-01-01T10:00:00.000Z"),rec("a1","old","SUCCEEDED","2026-01-01T10:00:00.000Z","2026-01-01T11:00:00.000Z",{inputTokens:1,outputTokens:1})],{final:{status:"ACCEPTED",reasons:[],risks:[],qa:{status:"NOT_RUN",required:false},tasks:{completed:1,failed:0,paused:0,waiting:0,approvalRequired:0},at:"2026-01-02T00:00:00.000Z"}});
+ const log=new InterventionLog(join(dir,"interventions.jsonl"));
+ await log.append({kind:"dispatch",projectId:"old",actor:"o",via:"t",ts:"2026-01-01T09:58:00.000Z"});
+ await log.append({kind:"manual",projectId:"old",actor:"o",via:"t",ts:"2026-03-01T10:00:00.000Z"});
+ const c=await buildScorecard(new CompanyState(dir),{now:Date.parse("2026-03-10T00:00:00.000Z")});
+ const run=runOf(c,"old"),m=metricOf(c,"interventions_per_accepted_run");
+ assert.equal(run.interventions,1);assert.deepEqual(run.interventionWindow,{from:"2026-01-01T10:00:00.000Z",to:"2026-01-02T00:00:00.000Z",basis:"final"});
+ assert.deepEqual([m.numerator,m.denominator,m.value],[1,1,1]);
+ assert.match(m.coverage??"",/1 intervention\(s\) not attributable/);assert.deepEqual(c.interventions.unattributedReasons,{"after-run":1});
+});
+
+test("fixture: the stale intervention, the post-run re-dispatch and the company-level note stay unattributed",async()=>{
  const c=await card(await freshFixture());
  assert.equal(runOf(c,"demo-parked").interventions,1);
- assert.deepEqual([c.interventions.total,c.interventions.attributed,c.interventions.unattributed],[7,5,2]);
+ assert.deepEqual([c.interventions.total,c.interventions.attributed,c.interventions.unattributed],[7,4,3]);
+ assert.deepEqual(c.interventions.unattributedReasons,{"after-run":1,"before-run":1,"no-project":1});
 });

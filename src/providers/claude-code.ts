@@ -75,7 +75,7 @@ export class ClaudeCodeProvider implements ModelProvider{
     inputTokens:(usage.input_tokens??0)+(usage.cache_creation_input_tokens??0)+(usage.cache_read_input_tokens??0),
     outputTokens:usage.output_tokens??0,
     model:Object.keys(parsed.modelUsage??{})[0],
-    ...(reported?{tokenSource:"reported" as const,cacheCreationInputTokens:usage.cache_creation_input_tokens,cacheReadInputTokens:usage.cache_read_input_tokens}:{})
+    ...(reported?{tokenSource:"reported" as const,cacheCreationInputTokens:usage.cache_creation_input_tokens,cacheReadInputTokens:usage.cache_read_input_tokens,cacheTokensInInput:true}:{})
    };
   }finally{await rm(scratch,{recursive:true,force:true});}
  }
