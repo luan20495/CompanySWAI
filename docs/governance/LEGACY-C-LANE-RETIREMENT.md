@@ -19,6 +19,16 @@
 
 No 1:1 lane recreation, no permanent `c1-backend` role, no new fixed C-named worktree or Claude session. Staffing should follow tasks, risk and measured provider capacity; no artificial assignment count.
 
+## Mandatory pre-cleanup gate — harvest the C0–C7 experience FIRST
+
+**Owner addendum (2026-10-14):** The C-lane team's historical engineering work is a valuable knowledge source. **DO NOT physically delete, prune or overwrite legacy agent instructions, source branches, worktrees, handoff records, QA/incident evidence or learning material until BOTH `KNOWLEDGE_HARVEST=PASS` and `DEPENDENCY_MIGRATION=PASS` are independently reviewed.** New C-lane assignment remains retired immediately, but material and operational state are retained until migration is proven safe. Dedicated requirements and acceptance: https://github.com/luan20495/CompanySWAI/issues/18.
+
+Capture domain-specific lessons from each lane C0–C7: successes **and failures**, root causes, accepted solutions and evidence, review/correction loops, safety/performance/QA patterns, dynamic tools and skill ideas. Classify as proven reusable, promising unverified, context-specific, unsafe/obsolete or already covered. Compare against the CURRENT 11 CompanySWAI native roles, permanent/dynamic skills, and deterministic checks; select the smallest nonduplicating destinations (role rules / skill / review gate / validator / operational playbook). **Do not mechanically paste legacy prompts or retain fixed C-numbered teams under different names.** Static and historical audit first; no token-heavy 11-role live benchmark now.
+
+**Private/public boundary:** The legacy HBLXWeb repository and local operational records are private, but CompanySWAI is public. Preserve all exact source references, full materials, customer/project details, environment information and evidence in an authorized PRIVATE location; the public CompanySWAI PR receives only a scrubbed, reusable lesson/skill decision matrix. Never copy raw private docs, internal logs, secrets, access details or security findings into the public repo. Confirm source licences and provenance.
+
+**Proof gate before ANY physical cleanup:** (1) all 8 lanes inventoried and evidence preserved privately, (2) accepted/deferred/rejected candidate ledger completed, (3) high-value patterns mapped to CompanySWAI roles/skills/gates and sanitized proposals reviewed, (4) backup/restore and live-dependency inventory verified, (5) independent `[CHATGPT-KNOWLEDGE-REVIEW]` PASS, (6) migration-specific review/QA and rollback PASS. If any evidence is missing, mark `UNKNOWN/BLOCKED` and retain it, rather than guessing or destroying a source. This gate applies before the existing class-A/B cleanup steps below.
+
 ## Four classes to inventory before deletion
 
 | Class | What it includes | Allowed handling |
