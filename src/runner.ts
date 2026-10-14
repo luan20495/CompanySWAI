@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import type {ModelProvider} from "./provider.js";
+import type {ModelProvider,ModelResponse} from "./provider.js";
 import type {ExecutionRecordValue} from "./execution-record.js";
 import type {CompanyState} from "./state.js";
 import {condense,contractViolations,isNone,parseAgentOutput,parseReviewVerdict,type ContractRequirement} from "./output-parser.js";
@@ -36,6 +36,19 @@ export class ContractViolationError extends Error{
 }
 
 const REPAIR_ECHO_CHARS=12000,MAX_REPAIR_ROUNDS=2;
+/** Token provenance over every provider call of one attempt (the first answer plus its repair rounds). */
+function usageOf(first:ModelResponse){
+ const calls=[first];
+ return {
+  add(response:ModelResponse){calls.push(response);},
+  fields(){
+   const sources=new Set(calls.map(c=>c.tokenSource));
+   const tokenSource=sources.size===1?[...sources][0]:"partial" as const;
+   const sum=(pick:(c:ModelResponse)=>number|undefined)=>calls.some(c=>pick(c)!=null)?calls.reduce((n,c)=>n+(pick(c)??0),0):undefined;
+   return {tokenSource,cacheCreationInputTokens:sum(c=>c.cacheCreationInputTokens),cacheReadInputTokens:sum(c=>c.cacheReadInputTokens)};
+  }
+ };
+}
 const gateRecords=(gates:GateResult[])=>gates.map(g=>({name:g.name,status:g.status,detail:g.detail}));
 const clip=(id:string,length=128)=>id.slice(0,length);
 
@@ -73,21 +86,23 @@ export class TaskRunner{
    const meta={taskId:task.taskId,kind:task.kind,sections:task.contract?.sections??[],validators:task.contract?.validators??[],params:task.contract?.params??{},requirementIds:task.validationContext?.requirementIds,ownerCandidates:task.validationContext?.ownerCandidates,slot:task.slot,retrieved:task.retrieved};
    let response=await provider.generate({system:task.system,prompt:task.prompt,maxTokens:task.maxTokens,meta});
    let inputTokens=response.inputTokens,outputTokens=response.outputTokens,answeredBy=response.model;
+   const usage=usageOf(response);
    let problems=this.problemsIn(task,response.text);
    // Repair rounds: the model sees exactly what the contract and validators found wrong, and re-emits the whole answer.
    for(let round=1;problems.length&&round<=MAX_REPAIR_ROUNDS;round++){
     const repair=task.prompt+"\n\n--- CONTRACT VIOLATION ---\nYour previous response did not satisfy the output contract:\n- "+problems.join("\n- ")+"\nRe-emit the complete response now, with every required section and format.\n\n--- PREVIOUS RESPONSE ---\n"+response.text.slice(0,REPAIR_ECHO_CHARS);
     response=await provider.generate({system:task.system,prompt:repair,maxTokens:task.maxTokens,meta});
     inputTokens+=response.inputTokens;outputTokens+=response.outputTokens;answeredBy=response.model??answeredBy;
+    usage.add(response);
     problems=this.problemsIn(task,response.text);
    }
    if(problems.length){
     const failedAt=new Date().toISOString(),error=new ContractViolationError(problems),actualCost=this.cost(task,inputTokens,outputTokens);
-    await this.state.executions.append({...base,model:answeredBy??base.model,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,actualCost,error:error.message});
+    await this.state.executions.append({...base,model:answeredBy??base.model,status:"FAILED",finishedAt:failedAt,inputTokens,outputTokens,...usage.fields(),actualCost,error:error.message});
     await this.state.memory.recordStatus(task.projectId,task.taskId,"FAILED",error.message);
     throw error;
    }
-   return await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,actualCost:this.cost(task,inputTokens,outputTokens)});
+   return await this.state.executions.append({...base,model:answeredBy??base.model,status:"CHECKPOINTED",finishedAt:new Date().toISOString(),output:redact(response.text),inputTokens,outputTokens,...usage.fields(),actualCost:this.cost(task,inputTokens,outputTokens)});
   }catch(error){
    if(!(error instanceof ContractViolationError)){
     const message=redactError(error);
@@ -144,7 +159,7 @@ export class TaskRunner{
 
  async finalize(task:RunTask,checkpointed:ExecutionRecordValue):Promise<ExecutionRecordValue>{
   const {state}=this,id=checkpointed.id,output=checkpointed.output,finishedAt=new Date().toISOString();
-  const base={...this.base({...task,estimatedCost:task.estimatedCost??checkpointed.estimatedCost},id,checkpointed.startedAt,{name:checkpointed.provider,model:checkpointed.model}),inputTokens:checkpointed.inputTokens,outputTokens:checkpointed.outputTokens,actualCost:checkpointed.actualCost};
+  const base={...this.base({...task,estimatedCost:task.estimatedCost??checkpointed.estimatedCost},id,checkpointed.startedAt,{name:checkpointed.provider,model:checkpointed.model}),inputTokens:checkpointed.inputTokens,outputTokens:checkpointed.outputTokens,tokenSource:checkpointed.tokenSource,cacheCreationInputTokens:checkpointed.cacheCreationInputTokens,cacheReadInputTokens:checkpointed.cacheReadInputTokens,actualCost:checkpointed.actualCost};
   try{
    const patches=task.kind==="maker"?parseFilePatches(output):[];
    let changedFiles:string[]=[],commitSha:string|undefined,evidence:string[]=[],gates:GateResult[]=[];

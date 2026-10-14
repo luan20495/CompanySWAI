@@ -1,0 +1,9 @@
+{
+  "id": "ui--review-2-0-fixture",
+  "projectId": "demo-supplied-retry",
+  "taskId": "ui",
+  "reviewerRole": "reviewer",
+  "verdict": "PASS",
+  "body": "PASS\n\n## Evidence\nSynthetic.",
+  "createdAt": "2026-01-11T10:33:00.000Z"
+}

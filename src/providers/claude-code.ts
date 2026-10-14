@@ -69,12 +69,13 @@ export class ClaudeCodeProvider implements ModelProvider{
     throw new ClaudeCodeError("claude-code failed (exit "+code+"): "+detail,"CLAUDE_FAILED");
    }
    if(!parsed||typeof parsed.result!=="string"||!parsed.result)throw new ClaudeCodeError("claude-code returned no text result: "+tail(stdout||stderr||"empty output"),"CLAUDE_BAD_OUTPUT");
-   const usage=parsed.usage??{};
+   const usage=parsed.usage??{},reported=parsed.usage!=null&&[usage.input_tokens,usage.output_tokens].some(n=>typeof n==="number");
    return {
     text:parsed.result,
     inputTokens:(usage.input_tokens??0)+(usage.cache_creation_input_tokens??0)+(usage.cache_read_input_tokens??0),
     outputTokens:usage.output_tokens??0,
-    model:Object.keys(parsed.modelUsage??{})[0]
+    model:Object.keys(parsed.modelUsage??{})[0],
+    ...(reported?{tokenSource:"reported" as const,cacheCreationInputTokens:usage.cache_creation_input_tokens,cacheReadInputTokens:usage.cache_read_input_tokens}:{})
    };
   }finally{await rm(scratch,{recursive:true,force:true});}
  }

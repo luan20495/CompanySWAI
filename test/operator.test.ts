@@ -516,11 +516,13 @@ test("the mutating commands write only through the engine's own mechanisms",asyn
  const state=await tmpState(),h=harness(),{run}=await startRunning(state,h);
  const beforeStop=await quietState(state.root);
  assert.equal((await asJson(state,["stop","xweb"])).requested,true);
- assert.deepEqual(changedPaths(beforeStop,await snapshotState(state.root)),["stops/xweb.json"]);
+ // Phase 0: a stop that was requested is also recorded as a human intervention (append-only log, nothing else changes).
+ assert.deepEqual(changedPaths(beforeStop,await snapshotState(state.root)),["interventions.jsonl","stops/xweb.json"]);
  h.release();await run;
  const beforePriority=await snapshotState(state.root);
  assert.equal((await asJson(state,["priority","xweb","T-50","--apply"])).applied,true);
- assert.deepEqual(changedPaths(beforePriority,await snapshotState(state.root)),["projects/xweb/STATUS.md","runs/xweb.json","runs/xweb.plan.json"]);
+ assert.deepEqual(changedPaths(beforePriority,await snapshotState(state.root)),["interventions.jsonl","projects/xweb/STATUS.md","runs/xweb.json","runs/xweb.plan.json"]);
+ assert.deepEqual((await state.interventions.read()).entries.map(e=>[e.kind,e.projectId,e.actorVerified]),[["stop","xweb",false],["priority","xweb",false]]);
 });
 
 test("store listing and stop requests tolerate torn files and never trust them",async()=>{

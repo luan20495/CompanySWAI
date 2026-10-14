@@ -19,7 +19,8 @@ export class AnthropicProvider implements ModelProvider{
   return {
    text,
    inputTokens:response.usage.input_tokens,
-   outputTokens:response.usage.output_tokens
+   outputTokens:response.usage.output_tokens,
+   tokenSource:"reported"
   };
  }
 }

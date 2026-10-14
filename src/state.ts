@@ -12,6 +12,7 @@ import {RunStore} from "./run-store.js";
 import {ReworkStore} from "./rework-store.js";
 import {StopStore} from "./stop-store.js";
 import {TakeoverStore} from "./takeover-store.js";
+import {InterventionLog} from "./intervention-log.js";
 
 /** Every persisted store under one configurable state directory, so a run, its resume and its tests share one root. */
 export class CompanyState{
@@ -19,7 +20,7 @@ export class CompanyState{
  readonly memory:ProjectMemoryStore;readonly artifacts:FileArtifactStore;readonly decisions:FileDecisionStore;
  readonly handoffs:FileHandoffStore;readonly reviews:FileReviewStore;readonly blockers:FileBlockerStore;
  readonly retrospectives:FileRetrospectiveStore;readonly experience:CompanyExperienceStore;
- readonly traceability:TraceabilityStore;readonly research:ResearchStore;readonly telemetry:TelemetryStore;readonly runs:RunStore;readonly rework:ReworkStore;readonly stops:StopStore;readonly takeover:TakeoverStore;
+ readonly traceability:TraceabilityStore;readonly research:ResearchStore;readonly telemetry:TelemetryStore;readonly runs:RunStore;readonly rework:ReworkStore;readonly stops:StopStore;readonly takeover:TakeoverStore;readonly interventions:InterventionLog;
  constructor(readonly root=".companyswai",companyRoot="company"){
   this.executions=new FileExecutionStore(join(root,"executions"));
   this.checkpoints=new FileCheckpointStore(join(root,"checkpoints"));
@@ -39,5 +40,6 @@ export class CompanyState{
   this.rework=new ReworkStore(join(root,"rework"));
   this.stops=new StopStore(join(root,"stops"));
   this.takeover=new TakeoverStore(join(root,"takeover"));
+  this.interventions=new InterventionLog(join(root,"interventions.jsonl"));
  }
 }

@@ -1,0 +1,44 @@
+{
+  "projectId": "demo-dryrun",
+  "mode": "BALANCED",
+  "maxQAReworkRounds": 2,
+  "budget": {
+    "maxTeamCost": {},
+    "maxAgentCost": {}
+  },
+  "research": {
+    "enabled": false,
+    "maxSourceAgeDays": 730,
+    "connectors": []
+  },
+  "signals": [],
+  "tasks": [
+    {
+      "capabilities": [
+        "reasoning"
+      ],
+      "estimatedInputTokens": 1000,
+      "estimatedOutputTokens": 1000,
+      "id": "doc",
+      "agentRole": "business-analyst",
+      "department": "engineering",
+      "dependencies": [],
+      "system": "# Synthetic fixture company\nRole instructions for the fixture.",
+      "prompt": "Synthetic task doc",
+      "inputRefs": [],
+      "produces": [],
+      "risk": "medium",
+      "skills": [],
+      "requiredGates": [],
+      "deliversCode": false,
+      "priority": 0,
+      "contract": {
+        "sections": [],
+        "verdict": false,
+        "validators": [],
+        "params": {}
+      },
+      "maxTokens": 4096
+    }
+  ]
+}

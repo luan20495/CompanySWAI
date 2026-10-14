@@ -1,0 +1,95 @@
+/**
+ * Versioned definitions of the organisation metrics the scorecard reports (Phase 0, catalog v1). Every metric names its numerator,
+ * denominator and source; a metric whose data does not exist yet is defined anyway and reported as UNKNOWN with the reason, so
+ * a missing number is never mistaken for zero. docs/evolution/METRICS.md mirrors this table (a test keeps them in sync).
+ */
+export const METRIC_CATALOG_VERSION=1;
+
+export type MetricDefinition={
+ id:string;name:string;definition:string;numerator:string;denominator:string;unit:"ratio"|"count"|"tokens"|"ms"|"per-hour"|"per-run";
+ source:string;limitations:string;
+ /** Set when the metric cannot be measured yet: why, and which phase is expected to make it measurable. */
+ unavailable?:string;
+};
+
+export const METRICS:MetricDefinition[]=[
+ {id:"accepted_run_rate",name:"Accepted runs",unit:"ratio",
+  definition:"Share of finished runs whose final status is ACCEPTED or ACCEPTED_WITH_RISKS.",
+  numerator:"runs with final status ACCEPTED or ACCEPTED_WITH_RISKS",denominator:"runs with a recorded final status",
+  source:"runs/<project>.json final.status",limitations:"A run's ACCEPTED is the engine's own verdict; before Phase 1 it can disagree with QA (see qa_conflict_rate)."},
+ {id:"qa_conflict_rate",name:"Accepted despite QA FAIL/BLOCKED",unit:"ratio",
+  definition:"Runs reported ACCEPTED/ACCEPTED_WITH_RISKS although at least one QA task in the run reported FAIL or BLOCKED.",
+  numerator:"accepted runs with a QA task verdict FAIL or BLOCKED",denominator:"runs with at least one QA task verdict FAIL or BLOCKED",
+  source:"QA task output parsed with the engine's parseQa (## QA Status), runs final.status",limitations:"Detection only; Phase 0 does not change the verdict. QA verdicts are the QA agent's own claims."},
+ {id:"first_attempt_gate_pass",name:"First attempt passes",unit:"ratio",
+  definition:"Maker tasks whose first execution attempt succeeded (contract, validators and gates passed).",
+  numerator:"maker tasks whose earliest attempt ended SUCCEEDED",denominator:"maker tasks with at least one finished attempt",
+  source:"executions/<project>/records.jsonl (one attempt = one record id)",limitations:"Not acceptance: a successful attempt can still get CHANGES_REQUIRED from review."},
+ {id:"first_pass_acceptance",name:"Accepted on first pass",unit:"ratio",
+  definition:"Tasks that became DONE with exactly one maker version and no CHANGES_REQUIRED review.",
+  numerator:"DONE tasks with one successful maker version, one maker attempt and no CHANGES_REQUIRED",denominator:"tasks that are DONE or whose latest maker attempt FAILED",
+  source:"engine taskHistory over the execution log, plan and QA rework requests; reviews/",limitations:"Needs the persisted plan; projects without one are excluded (coverage shown)."},
+ {id:"attempt_failure_rate",name:"Failed maker attempts",unit:"ratio",
+  definition:"Share of finished maker attempts that failed (gate, contract, provider error or timeout).",
+  numerator:"maker attempts ending FAILED",denominator:"maker attempts ending SUCCEEDED or FAILED",
+  source:"executions records",limitations:"Mixes causes; failure signatures arrive in Phase 5."},
+ {id:"rework_token_share",name:"Tokens spent on failed attempts",unit:"ratio",
+  definition:"Provider-reported tokens consumed by attempts that failed, over all provider-reported tokens.",
+  numerator:"reported input+output tokens of FAILED attempts",denominator:"reported input+output tokens of all attempts",
+  source:"executions records (inputTokens, outputTokens, tokenSource)",limitations:"Attempts without reported usage (timeouts, fixtures) are excluded; coverage shown."},
+ {id:"review_changes_required_rate",name:"Review asked for changes",unit:"ratio",
+  definition:"Share of stored review verdicts that were CHANGES_REQUIRED.",
+  numerator:"review records with verdict CHANGES_REQUIRED",denominator:"review records",
+  source:"reviews/<project>/*.json",limitations:"Counts verdicts, not distinct findings."},
+ {id:"reviewer_escape_rate",name:"QA FAIL after review PASS (same run)",unit:"ratio",
+  definition:"QA tasks reporting FAIL whose upstream reviewed tasks in the same run all had a final PASS review.",
+  numerator:"QA FAIL tasks with every reviewed upstream task passing review",denominator:"QA FAIL tasks with at least one reviewed upstream task in the same run",
+  source:"plan dependencies, reviews/, QA output",limitations:"Only within one run; QA run as a separate project has no recorded link to the work it checked (until Phase 3)."},
+ {id:"planner_bypass_rate",name:"Plans supplied from outside",unit:"ratio",
+  definition:"Runs whose plan was supplied whole instead of compiled from a brief by the company planner.",
+  numerator:"runs with plan source supplied-plan",denominator:"runs whose plan source is known",
+  source:"runs provenance (recorded from Phase 0); older runs derived from briefHash==planHash",limitations:"Derived values are labelled; a reprioritised or replanned run can make the derivation wrong."},
+ {id:"lesson_injection_rate",name:"Plans carrying company lessons",unit:"ratio",
+  definition:"Runs whose persisted plan has at least one system prompt with the lessons block.",
+  numerator:"runs whose plan contains the lessons header",denominator:"runs with a readable plan",
+  source:"runs/<project>.plan.json",limitations:"Presence only; whether a lesson helped is not measured until Phase 5."},
+ {id:"reported_tokens",name:"Provider-reported tokens",unit:"tokens",
+  definition:"Sum of input+output tokens the provider reported, cache tokens shown separately where reported.",
+  numerator:"reported input+output tokens",denominator:"—",
+  source:"executions records",limitations:"Subscription usage has no price; fixture (dry-run) estimates are counted separately and never added."},
+ {id:"tokens_per_accepted_run",name:"Reported tokens per accepted run",unit:"tokens",
+  definition:"Reported tokens of all attempts in accepted runs, divided by the accepted runs that have any reported usage.",
+  numerator:"reported tokens in accepted runs",denominator:"accepted runs with reported usage",
+  source:"executions records, runs",limitations:"Task size differs between runs; not comparable across different work."},
+ {id:"median_attempt_ms",name:"Median attempt wall time",unit:"ms",
+  definition:"Median of finishedAt - startedAt over finished attempts.",numerator:"—",denominator:"finished attempts",
+  source:"executions records timestamps",limitations:"Includes provider latency and gates; not queue time."},
+ {id:"accepted_runs_per_busy_hour",name:"Accepted runs per busy hour",unit:"per-hour",
+  definition:"Accepted runs divided by the hours during which at least one run had an attempt in progress.",
+  numerator:"accepted runs",denominator:"hours covered by the union of run activity intervals",
+  source:"executions records timestamps",limitations:"Runs differ in size; idle time between dispatches is excluded on purpose (see dispatch gap)."},
+ {id:"dispatch_gap_ms",name:"Total idle gap between runs",unit:"ms",
+  definition:"Sum of the gaps in which no run had an attempt in progress, between the first and last activity of the window.",
+  numerator:"gap time",denominator:"—",source:"executions records timestamps",limitations:"Idle can be intentional (owner away); not all of it is waste."},
+ {id:"interventions_per_accepted_run",name:"Human interventions per accepted run",unit:"per-run",
+  definition:"Recorded interventions linked to runs started after the intervention log existed, per accepted run among those runs.",
+  numerator:"interventions on covered runs",denominator:"accepted covered runs",
+  source:"interventions.jsonl (Phase 0+)",limitations:"Actors are self-declared; manual actions outside the engine count only if someone records them."},
+ {id:"known_cost",name:"Known money cost",unit:"count",
+  definition:"Sum of actualCost on metered attempts.",numerator:"actualCost",denominator:"—",source:"executions records",
+  limitations:"Subscription runs have no per-call price: their cost is UNKNOWN, never 0."},
+ {id:"skill_outcome_effect",name:"Skill effect on outcomes",unit:"ratio",
+  definition:"Difference in first-pass acceptance between comparable tasks with and without a skill.",numerator:"—",denominator:"—",
+  source:"skillTrace + outcomes",limitations:"Selection is recorded, outcomes per skill are not.",unavailable:"no controlled comparison exists; Phase 4"},
+ {id:"repeated_error_rate",name:"Repeated failure signatures",unit:"ratio",
+  definition:"Failures whose normalised signature already occurred before.",numerator:"—",denominator:"—",
+  source:"failure registry",limitations:"No failure signatures are recorded yet.",unavailable:"no failure registry; Phase 5"},
+ {id:"model_escalation_success",name:"Model escalation success",unit:"ratio",
+  definition:"Escalated attempts that succeeded.",numerator:"—",denominator:"—",source:"routing policy events",
+  limitations:"There is no escalation policy; manual model changes are only visible if recorded as interventions.",unavailable:"no escalation policy; Phase 6"},
+ {id:"release_readiness",name:"Release readiness",unit:"count",
+  definition:"Features accepted and release-ready.",numerator:"—",denominator:"—",source:"release states",
+  limitations:"The engine has no feature or release state.",unavailable:"not tracked; Phase 7"}
+];
+
+export const metricById=(id:string)=>METRICS.find(m=>m.id===id);

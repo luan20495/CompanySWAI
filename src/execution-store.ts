@@ -32,6 +32,15 @@ export class FileExecutionStore{
   if(corrupt.length)await this.quarantine(projectId,corrupt);
   return records;
  }
+ /** Strictly read-only variant for reporting: unreadable lines are counted, never quarantined (list() moves them aside). */
+ async read(projectId:string):Promise<{records:ExecutionRecordValue[];unreadable:number}>{
+  let text:string;
+  try{text=await readFile(this.path(projectId),"utf8");}
+  catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return {records:[],unreadable:0};throw error;}
+  const records:ExecutionRecordValue[]=[];let unreadable=0;
+  for(const line of text.split("\n")){if(!line.trim())continue;const parsed=ExecutionRecord.safeParse((()=>{try{return JSON.parse(line);}catch{return undefined;}})());if(parsed.success)records.push(parsed.data);else unreadable++;}
+  return {records,unreadable};
+ }
  private async quarantine(projectId:string,lines:string[]){
   const path=join(this.root,projectId,"records.corrupt.jsonl");
   const seen=await readFile(path,"utf8").catch(()=>"");

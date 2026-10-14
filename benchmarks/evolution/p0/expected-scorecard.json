@@ -1,0 +1,794 @@
+{
+  "generatedAt": "2026-01-20T12:30:00.000Z",
+  "stateDir": "<fixture>",
+  "readOnly": true,
+  "catalogVersion": 1,
+  "window": {
+    "firstActivity": "2026-01-10T09:01:00.000Z",
+    "lastActivity": "2026-01-20T12:05:00.000Z"
+  },
+  "totals": {
+    "projects": 6,
+    "runs": 6,
+    "byFinal": {
+      "ACCEPTED": 4,
+      "FAILED": 1,
+      "RUNNING": 1
+    },
+    "running": 1,
+    "attempts": 13,
+    "makerTasks": 7
+  },
+  "runs": [
+    {
+      "projectId": "demo-brief-accepted",
+      "phase": "DONE",
+      "final": "ACCEPTED",
+      "finalQa": "PASS",
+      "startedAt": "2026-01-10T09:00:00.000Z",
+      "endedAt": "2026-01-10T09:20:00.000Z",
+      "activeMs": 1080000,
+      "engine": {
+        "state": "IDLE",
+        "running": []
+      },
+      "planSource": {
+        "value": "brief",
+        "basis": "recorded"
+      },
+      "lessonsInjected": {
+        "value": 1,
+        "basis": "recorded"
+      },
+      "companyVersion": {
+        "gitSha": "0000000000000000000000000000000000000000",
+        "dirty": false,
+        "organizationHash": "f1x7ure0000000a1",
+        "organizationFiles": 3,
+        "packageVersion": "0.1.0",
+        "at": "2026-01-10T09:00:00.000Z"
+      },
+      "tasks": [
+        {
+          "taskId": "api",
+          "role": "backend-engineer",
+          "attempts": 1,
+          "firstAttempt": "SUCCEEDED",
+          "lastAttempt": "SUCCEEDED",
+          "done": true,
+          "makerVersions": 1,
+          "reviews": {
+            "pass": 1,
+            "changesRequired": 0
+          },
+          "startedAt": "2026-01-10T09:01:00.000Z",
+          "endedAt": "2026-01-10T09:09:00.000Z",
+          "wallMs": 480000
+        },
+        {
+          "taskId": "verify",
+          "role": "qa-engineer",
+          "attempts": 1,
+          "firstAttempt": "SUCCEEDED",
+          "lastAttempt": "SUCCEEDED",
+          "done": true,
+          "makerVersions": 1,
+          "reviews": {
+            "pass": 0,
+            "changesRequired": 0
+          },
+          "qa": "PASS",
+          "startedAt": "2026-01-10T09:10:00.000Z",
+          "endedAt": "2026-01-10T09:19:00.000Z",
+          "wallMs": 540000
+        }
+      ],
+      "attempts": {
+        "maker": 2,
+        "review": 1,
+        "failed": 0,
+        "inFlight": 0
+      },
+      "tokens": {
+        "reported": {
+          "input": 27000,
+          "output": 5800,
+          "cacheRead": 12000,
+          "cacheCreation": 1000,
+          "attempts": 3
+        },
+        "estimated": {
+          "input": 0,
+          "output": 0,
+          "attempts": 0
+        },
+        "partialAttempts": 0,
+        "unknownAttempts": 0
+      },
+      "knownCost": 0,
+      "subscriptionAttempts": 3,
+      "reviewVerdicts": {
+        "pass": 1,
+        "changesRequired": 0
+      },
+      "qa": [
+        {
+          "taskId": "verify",
+          "verdict": "PASS"
+        }
+      ],
+      "qaConflict": false,
+      "failures": [],
+      "issues": [],
+      "skillsSelected": {}
+    },
+    {
+      "projectId": "demo-dryrun",
+      "phase": "DONE",
+      "final": "ACCEPTED",
+      "finalQa": "NOT_RUN",
+      "startedAt": "2026-01-14T07:00:00.000Z",
+      "endedAt": "2026-01-14T07:02:00.000Z",
+      "activeMs": 1000,
+      "engine": {
+        "state": "IDLE",
+        "running": []
+      },
+      "planSource": {
+        "value": "supplied-plan",
+        "basis": "derived"
+      },
+      "lessonsInjected": {
+        "value": 0,
+        "basis": "derived"
+      },
+      "tasks": [
+        {
+          "taskId": "doc",
+          "role": "business-analyst",
+          "attempts": 1,
+          "firstAttempt": "SUCCEEDED",
+          "lastAttempt": "SUCCEEDED",
+          "done": true,
+          "makerVersions": 1,
+          "reviews": {
+            "pass": 0,
+            "changesRequired": 0
+          },
+          "startedAt": "2026-01-14T07:00:10.000Z",
+          "endedAt": "2026-01-14T07:00:11.000Z",
+          "wallMs": 1000
+        }
+      ],
+      "attempts": {
+        "maker": 1,
+        "review": 0,
+        "failed": 0,
+        "inFlight": 0
+      },
+      "tokens": {
+        "reported": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "attempts": 0
+        },
+        "estimated": {
+          "input": 900,
+          "output": 120,
+          "attempts": 1
+        },
+        "partialAttempts": 0,
+        "unknownAttempts": 0
+      },
+      "knownCost": 0,
+      "subscriptionAttempts": 0,
+      "reviewVerdicts": {
+        "pass": 0,
+        "changesRequired": 0
+      },
+      "qa": [],
+      "qaConflict": false,
+      "failures": [],
+      "issues": [],
+      "skillsSelected": {},
+      "interventions": 1
+    },
+    {
+      "projectId": "demo-failed-timeout",
+      "phase": "EXECUTE",
+      "final": "FAILED",
+      "finalQa": "NOT_RUN",
+      "startedAt": "2026-01-13T08:00:00.000Z",
+      "endedAt": "2026-01-13T08:40:00.000Z",
+      "activeMs": 1740000,
+      "engine": {
+        "state": "IDLE",
+        "running": []
+      },
+      "planSource": {
+        "value": "supplied-plan",
+        "basis": "derived"
+      },
+      "lessonsInjected": {
+        "value": 0,
+        "basis": "derived"
+      },
+      "tasks": [
+        {
+          "taskId": "deploy",
+          "role": "devops-sre",
+          "attempts": 2,
+          "firstAttempt": "FAILED",
+          "lastAttempt": "FAILED",
+          "done": false,
+          "makerVersions": 0,
+          "reviews": {
+            "pass": 0,
+            "changesRequired": 0
+          },
+          "startedAt": "2026-01-13T08:01:00.000Z",
+          "endedAt": "2026-01-13T08:30:00.000Z",
+          "wallMs": 1740000,
+          "failure": "Gate 'unit-tests' failed: synthetic script error"
+        }
+      ],
+      "attempts": {
+        "maker": 2,
+        "review": 0,
+        "failed": 2,
+        "inFlight": 0
+      },
+      "tokens": {
+        "reported": {
+          "input": 18000,
+          "output": 4000,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "attempts": 1
+        },
+        "estimated": {
+          "input": 0,
+          "output": 0,
+          "attempts": 0
+        },
+        "partialAttempts": 0,
+        "unknownAttempts": 1
+      },
+      "knownCost": 0,
+      "subscriptionAttempts": 2,
+      "reviewVerdicts": {
+        "pass": 0,
+        "changesRequired": 0
+      },
+      "qa": [],
+      "qaConflict": false,
+      "failures": [
+        {
+          "taskId": "deploy",
+          "role": "devops-sre",
+          "reason": "Gate 'unit-tests' failed: synthetic script error",
+          "at": "2026-01-13T08:30:00.000Z"
+        }
+      ],
+      "issues": [
+        "1 unreadable execution log line(s)"
+      ],
+      "skillsSelected": {},
+      "interventions": 2
+    },
+    {
+      "projectId": "demo-qa-conflict",
+      "phase": "DONE",
+      "final": "ACCEPTED",
+      "finalQa": "NOT_RUN",
+      "startedAt": "2026-01-12T14:00:00.000Z",
+      "endedAt": "2026-01-12T14:10:00.000Z",
+      "activeMs": 480000,
+      "engine": {
+        "state": "IDLE",
+        "running": []
+      },
+      "planSource": {
+        "value": "supplied-plan",
+        "basis": "derived"
+      },
+      "lessonsInjected": {
+        "value": 0,
+        "basis": "derived"
+      },
+      "tasks": [
+        {
+          "taskId": "check",
+          "role": "qa-engineer",
+          "attempts": 1,
+          "firstAttempt": "SUCCEEDED",
+          "lastAttempt": "SUCCEEDED",
+          "done": true,
+          "makerVersions": 1,
+          "reviews": {
+            "pass": 0,
+            "changesRequired": 0
+          },
+          "qa": "FAIL",
+          "startedAt": "2026-01-12T14:01:00.000Z",
+          "endedAt": "2026-01-12T14:09:00.000Z",
+          "wallMs": 480000
+        }
+      ],
+      "attempts": {
+        "maker": 1,
+        "review": 0,
+        "failed": 0,
+        "inFlight": 0
+      },
+      "tokens": {
+        "reported": {
+          "input": 15000,
+          "output": 2500,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "attempts": 1
+        },
+        "estimated": {
+          "input": 0,
+          "output": 0,
+          "attempts": 0
+        },
+        "partialAttempts": 0,
+        "unknownAttempts": 0
+      },
+      "knownCost": 0,
+      "subscriptionAttempts": 1,
+      "reviewVerdicts": {
+        "pass": 0,
+        "changesRequired": 0
+      },
+      "qa": [
+        {
+          "taskId": "check",
+          "verdict": "FAIL"
+        }
+      ],
+      "qaConflict": true,
+      "failures": [],
+      "issues": [],
+      "skillsSelected": {}
+    },
+    {
+      "projectId": "demo-running",
+      "phase": "EXECUTE",
+      "startedAt": "2026-01-20T12:00:00.000Z",
+      "engine": {
+        "state": "RUNNING",
+        "pid": 424242,
+        "running": [
+          {
+            "taskId": "build",
+            "role": "backend-engineer",
+            "elapsedMs": 1500000
+          }
+        ]
+      },
+      "planSource": {
+        "value": "supplied-plan",
+        "basis": "recorded"
+      },
+      "lessonsInjected": {
+        "value": 0,
+        "basis": "recorded"
+      },
+      "companyVersion": {
+        "gitSha": "0000000000000000000000000000000000000000",
+        "dirty": false,
+        "organizationHash": "f1x7ure0000000a1",
+        "organizationFiles": 3,
+        "packageVersion": "0.1.0",
+        "at": "2026-01-10T09:00:00.000Z"
+      },
+      "tasks": [
+        {
+          "taskId": "build",
+          "role": "backend-engineer",
+          "attempts": 1,
+          "firstAttempt": "IN_FLIGHT",
+          "lastAttempt": "IN_FLIGHT",
+          "done": false,
+          "makerVersions": 0,
+          "reviews": {
+            "pass": 0,
+            "changesRequired": 0
+          },
+          "startedAt": "2026-01-20T12:05:00.000Z"
+        },
+        {
+          "taskId": "check",
+          "role": "qa-engineer",
+          "attempts": 0,
+          "done": false,
+          "makerVersions": 0,
+          "reviews": {
+            "pass": 0,
+            "changesRequired": 0
+          }
+        }
+      ],
+      "attempts": {
+        "maker": 1,
+        "review": 0,
+        "failed": 0,
+        "inFlight": 1
+      },
+      "tokens": {
+        "reported": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "attempts": 0
+        },
+        "estimated": {
+          "input": 0,
+          "output": 0,
+          "attempts": 0
+        },
+        "partialAttempts": 0,
+        "unknownAttempts": 0
+      },
+      "knownCost": 0,
+      "subscriptionAttempts": 1,
+      "reviewVerdicts": {
+        "pass": 0,
+        "changesRequired": 0
+      },
+      "qa": [],
+      "qaConflict": false,
+      "failures": [],
+      "issues": [],
+      "skillsSelected": {},
+      "interventions": 1
+    },
+    {
+      "projectId": "demo-supplied-retry",
+      "phase": "DONE",
+      "final": "ACCEPTED",
+      "finalQa": "NOT_RUN",
+      "startedAt": "2026-01-11T10:00:00.000Z",
+      "endedAt": "2026-01-11T10:40:00.000Z",
+      "activeMs": 1920000,
+      "engine": {
+        "state": "IDLE",
+        "running": []
+      },
+      "planSource": {
+        "value": "supplied-plan",
+        "basis": "derived"
+      },
+      "lessonsInjected": {
+        "value": 0,
+        "basis": "derived"
+      },
+      "tasks": [
+        {
+          "taskId": "ui",
+          "role": "frontend-engineer",
+          "attempts": 3,
+          "firstAttempt": "FAILED",
+          "lastAttempt": "SUCCEEDED",
+          "done": true,
+          "makerVersions": 2,
+          "reviews": {
+            "pass": 1,
+            "changesRequired": 1
+          },
+          "startedAt": "2026-01-11T10:01:00.000Z",
+          "endedAt": "2026-01-11T10:33:00.000Z",
+          "wallMs": 1920000
+        }
+      ],
+      "attempts": {
+        "maker": 3,
+        "review": 2,
+        "failed": 1,
+        "inFlight": 0
+      },
+      "tokens": {
+        "reported": {
+          "input": 81000,
+          "output": 17600,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "attempts": 5
+        },
+        "estimated": {
+          "input": 0,
+          "output": 0,
+          "attempts": 0
+        },
+        "partialAttempts": 0,
+        "unknownAttempts": 0
+      },
+      "knownCost": 0,
+      "subscriptionAttempts": 5,
+      "reviewVerdicts": {
+        "pass": 1,
+        "changesRequired": 1
+      },
+      "qa": [],
+      "qaConflict": false,
+      "failures": [],
+      "issues": [],
+      "skillsSelected": {}
+    }
+  ],
+  "metrics": [
+    {
+      "id": "accepted_run_rate",
+      "name": "Accepted runs",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.8,
+      "numerator": 4,
+      "denominator": 5,
+      "source": "runs/<project>.json final.status",
+      "limitations": "A run's ACCEPTED is the engine's own verdict; before Phase 1 it can disagree with QA (see qa_conflict_rate)."
+    },
+    {
+      "id": "qa_conflict_rate",
+      "name": "Accepted despite QA FAIL/BLOCKED",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 1,
+      "numerator": 1,
+      "denominator": 1,
+      "coverage": "2 run(s) with a QA verdict",
+      "source": "QA task output parsed with the engine's parseQa (## QA Status), runs final.status",
+      "limitations": "Detection only; Phase 0 does not change the verdict. QA verdicts are the QA agent's own claims."
+    },
+    {
+      "id": "first_attempt_gate_pass",
+      "name": "First attempt passes",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.6667,
+      "numerator": 4,
+      "denominator": 6,
+      "source": "executions/<project>/records.jsonl (one attempt = one record id)",
+      "limitations": "Not acceptance: a successful attempt can still get CHANGES_REQUIRED from review."
+    },
+    {
+      "id": "first_pass_acceptance",
+      "name": "Accepted on first pass",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.6667,
+      "numerator": 4,
+      "denominator": 6,
+      "coverage": "6/6 runs have a readable plan",
+      "source": "engine taskHistory over the execution log, plan and QA rework requests; reviews/",
+      "limitations": "Needs the persisted plan; projects without one are excluded (coverage shown)."
+    },
+    {
+      "id": "attempt_failure_rate",
+      "name": "Failed maker attempts",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.3333,
+      "numerator": 3,
+      "denominator": 9,
+      "source": "executions records",
+      "limitations": "Mixes causes; failure signatures arrive in Phase 5."
+    },
+    {
+      "id": "rework_token_share",
+      "name": "Tokens spent on failed attempts",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.275,
+      "numerator": 47000,
+      "denominator": 170900,
+      "coverage": "10/12 finished attempts have provider-reported usage",
+      "source": "executions records (inputTokens, outputTokens, tokenSource)",
+      "limitations": "Attempts without reported usage (timeouts, fixtures) are excluded; coverage shown."
+    },
+    {
+      "id": "review_changes_required_rate",
+      "name": "Review asked for changes",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.3333,
+      "numerator": 1,
+      "denominator": 3,
+      "source": "reviews/<project>/*.json",
+      "limitations": "Counts verdicts, not distinct findings."
+    },
+    {
+      "id": "reviewer_escape_rate",
+      "name": "QA FAIL after review PASS (same run)",
+      "unit": "ratio",
+      "status": "UNKNOWN",
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "coverage": "same-run links only; 1 run(s) with a QA FAIL",
+      "reason": "no QA FAIL with a reviewed upstream task in the same run",
+      "source": "plan dependencies, reviews/, QA output",
+      "limitations": "Only within one run; QA run as a separate project has no recorded link to the work it checked (until Phase 3)."
+    },
+    {
+      "id": "planner_bypass_rate",
+      "name": "Plans supplied from outside",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.8333,
+      "numerator": 5,
+      "denominator": 6,
+      "coverage": "2 recorded, 4 derived from hashes",
+      "source": "runs provenance (recorded from Phase 0); older runs derived from briefHash==planHash",
+      "limitations": "Derived values are labelled; a reprioritised or replanned run can make the derivation wrong."
+    },
+    {
+      "id": "lesson_injection_rate",
+      "name": "Plans carrying company lessons",
+      "unit": "ratio",
+      "status": "MEASURED",
+      "value": 0.1667,
+      "numerator": 1,
+      "denominator": 6,
+      "source": "runs/<project>.plan.json",
+      "limitations": "Presence only; whether a lesson helped is not measured until Phase 5."
+    },
+    {
+      "id": "reported_tokens",
+      "name": "Provider-reported tokens",
+      "unit": "tokens",
+      "status": "MEASURED",
+      "value": 170900,
+      "numerator": 170900,
+      "denominator": null,
+      "coverage": "10/12 finished attempts have provider-reported usage",
+      "source": "executions records",
+      "limitations": "Subscription usage has no price; fixture (dry-run) estimates are counted separately and never added."
+    },
+    {
+      "id": "tokens_per_accepted_run",
+      "name": "Reported tokens per accepted run",
+      "unit": "tokens",
+      "status": "MEASURED",
+      "value": 49633,
+      "numerator": 148900,
+      "denominator": 3,
+      "coverage": "3/4 accepted runs have reported usage",
+      "source": "executions records, runs",
+      "limitations": "Task size differs between runs; not comparable across different work."
+    },
+    {
+      "id": "median_attempt_ms",
+      "name": "Median attempt wall time",
+      "unit": "ms",
+      "status": "MEASURED",
+      "value": 420000,
+      "numerator": null,
+      "denominator": 12,
+      "source": "executions records timestamps",
+      "limitations": "Includes provider latency and gates; not queue time."
+    },
+    {
+      "id": "accepted_runs_per_busy_hour",
+      "name": "Accepted runs per busy hour",
+      "unit": "per-hour",
+      "status": "MEASURED",
+      "value": 2.14,
+      "numerator": 4,
+      "denominator": 1.867,
+      "source": "executions records timestamps",
+      "limitations": "Runs differ in size; idle time between dispatches is excluded on purpose (see dispatch gap)."
+    },
+    {
+      "id": "dispatch_gap_ms",
+      "name": "Total idle gap between runs",
+      "unit": "ms",
+      "status": "MEASURED",
+      "value": 869819000,
+      "numerator": 869819000,
+      "denominator": null,
+      "source": "executions records timestamps",
+      "limitations": "Idle can be intentional (owner away); not all of it is waste."
+    },
+    {
+      "id": "interventions_per_accepted_run",
+      "name": "Human interventions per accepted run",
+      "unit": "per-run",
+      "status": "MEASURED",
+      "value": 4,
+      "numerator": 4,
+      "denominator": 1,
+      "coverage": "3 run(s) started after the log began (2026-01-13T07:59:00.000Z)",
+      "source": "interventions.jsonl (Phase 0+)",
+      "limitations": "Actors are self-declared; manual actions outside the engine count only if someone records them."
+    },
+    {
+      "id": "known_cost",
+      "name": "Known money cost",
+      "unit": "count",
+      "status": "UNKNOWN",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "coverage": "0 metered attempt(s) with a cost; 12 subscription attempt(s) UNKNOWN",
+      "reason": "no metered attempt with a recorded cost (subscription usage has no price)",
+      "source": "executions records",
+      "limitations": "Subscription runs have no per-call price: their cost is UNKNOWN, never 0."
+    },
+    {
+      "id": "skill_outcome_effect",
+      "name": "Skill effect on outcomes",
+      "unit": "ratio",
+      "status": "NOT_AVAILABLE",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "reason": "no controlled comparison exists; Phase 4",
+      "source": "skillTrace + outcomes",
+      "limitations": "Selection is recorded, outcomes per skill are not."
+    },
+    {
+      "id": "repeated_error_rate",
+      "name": "Repeated failure signatures",
+      "unit": "ratio",
+      "status": "NOT_AVAILABLE",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "reason": "no failure registry; Phase 5",
+      "source": "failure registry",
+      "limitations": "No failure signatures are recorded yet."
+    },
+    {
+      "id": "model_escalation_success",
+      "name": "Model escalation success",
+      "unit": "ratio",
+      "status": "NOT_AVAILABLE",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "reason": "no escalation policy; Phase 6",
+      "source": "routing policy events",
+      "limitations": "There is no escalation policy; manual model changes are only visible if recorded as interventions."
+    },
+    {
+      "id": "release_readiness",
+      "name": "Release readiness",
+      "unit": "count",
+      "status": "NOT_AVAILABLE",
+      "value": null,
+      "numerator": null,
+      "denominator": null,
+      "reason": "not tracked; Phase 7",
+      "source": "release states",
+      "limitations": "The engine has no feature or release state."
+    }
+  ],
+  "interventions": {
+    "logExists": true,
+    "since": "2026-01-13T07:59:00.000Z",
+    "total": 4,
+    "unreadable": 0,
+    "byKind": {
+      "dispatch": 3,
+      "redispatch": 1
+    }
+  },
+  "coverage": {
+    "unreadableLogLines": 1,
+    "runsWithoutState": 0,
+    "runsWithoutPlan": 0,
+    "unreadableRunFiles": 0,
+    "attemptsWithoutFinish": 1,
+    "estimatedTokenAttempts": 1,
+    "unknownTokenAttempts": 1,
+    "provenanceRecorded": 2,
+    "versionRecorded": 2
+  }
+}
