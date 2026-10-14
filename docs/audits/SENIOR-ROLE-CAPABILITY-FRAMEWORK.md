@@ -46,6 +46,7 @@ Each role's eventual assignment must declare:
 - SFIA 9 software development (PROG): https://sfia-online.org/en/sfia-9/skills/programming-software-development
 - SFIA 9 requirements (REQM): https://sfia-online.org/en/sfia-9/skills/requirements-definition-and-management
 - SFIA 9 UX analysis/design: https://sfia-online.org/en/sfia-9/skills/user-experience-analysis and https://sfia-online.org/en/sfia-9/skills/user-experience-design
+- W3C WCAG 2.2 recommendation (testable accessibility criteria): https://www.w3.org/TR/WCAG22/
 - SFIA 9 functional/nonfunctional testing: https://sfia-online.org/en/sfia-9/skills/functional-testing and https://sfia-online.org/en/sfia-9/skills/non-functional-testing
 - OWASP ASVS 5.0: https://github.com/OWASP/ASVS/tree/master/5.0
 - ISO/IEC 25010:2023 product quality model (nine characteristics): https://committee.iso.org/standard/78176.html
