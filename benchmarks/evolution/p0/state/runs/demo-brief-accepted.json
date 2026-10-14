@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "projectId": "demo-brief-accepted",
+  "planHash": "78b70ba766ff22d9",
+  "notes": [],
+  "briefHash": "b1ef0000000000a1",
+  "completedPhases": [
+    "PLAN",
+    "ESTIMATE",
+    "APPROVAL",
+    "EXECUTE",
+    "FINALIZE",
+    "RETROSPECTIVE",
+    "DONE"
+  ],
+  "phase": "DONE",
+  "startedAt": "2026-01-10T09:00:00.000Z",
+  "updatedAt": "2026-01-10T09:20:00.000Z",
+  "final": {
+    "status": "ACCEPTED",
+    "reasons": [
+      "fixture"
+    ],
+    "risks": [],
+    "qa": {
+      "status": "PASS",
+      "required": true
+    },
+    "tasks": {
+      "completed": 2,
+      "failed": 0,
+      "paused": 0,
+      "waiting": 0,
+      "approvalRequired": 0
+    },
+    "at": "2026-01-10T09:20:00.000Z"
+  },
+  "companyVersion": {
+    "gitSha": "0000000000000000000000000000000000000000",
+    "dirty": false,
+    "organizationHash": "f1x7ure0000000a1",
+    "organizationFiles": 3,
+    "packageVersion": "0.1.0",
+    "at": "2026-01-10T09:00:00.000Z"
+  },
+  "provenance": {
+    "source": "brief",
+    "lessonsInjected": 1,
+    "lessonsAvailable": 1
+  }
+}

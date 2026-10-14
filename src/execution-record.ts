@@ -7,7 +7,14 @@ export const ExecutionRecord=z.object({
  status:z.enum(["STARTED","CHECKPOINTED","SUCCEEDED","FAILED","PAUSED_CAPACITY"]),
  startedAt:z.string(),finishedAt:z.string().optional(),inputRefs:z.array(z.string()).default([]),output:z.string().default(""),
  artifactRefs:z.array(z.string()).default([]),decisionRefs:z.array(z.string()).default([]),reviewRefs:z.array(z.string()).default([]),blockerRefs:z.array(z.string()).default([]),
- inputTokens:z.number().int().nonnegative().default(0),outputTokens:z.number().int().nonnegative().default(0),estimatedCost:z.number().nonnegative().optional(),actualCost:z.number().nonnegative().optional(),
+ inputTokens:z.number().int().nonnegative().default(0),outputTokens:z.number().int().nonnegative().default(0),
+ /** Where the token counts came from ("partial": some of this attempt's calls reported no usage). Absent: not recorded, the counts mean unknown. */
+ tokenSource:z.enum(["reported","estimated","partial"]).optional(),
+ cacheCreationInputTokens:z.number().int().nonnegative().optional(),cacheReadInputTokens:z.number().int().nonnegative().optional(),
+ /** Whether inputTokens already contains the cache figures (provider convention). Absent: unknown / no cache figures. */
+ cacheTokensInInput:z.boolean().optional(),
+ /** What actualCost is: "nominal-rate-estimate" = tokens × the profile's configured per-million prices (no cache discounts; not a bill). Absent on older records, which were computed the same way. */
+ costBasis:z.enum(["nominal-rate-estimate","billed"]).optional(),estimatedCost:z.number().nonnegative().optional(),actualCost:z.number().nonnegative().optional(),
  billing:z.enum(["metered","subscription"]).default("metered"),
  profileId:z.string().optional(),/** Repository HEAD the model saw when this step was built (isolated worktrees start from it, so overlapping edits conflict instead of silently overwriting). */baseSha:z.string().optional(),slot:z.number().int().nonnegative().optional(),contextRefs:z.array(z.string()).default([]),
  /** Which specialist skills (version, source, licence, matched signals, context cost) shaped this execution; reviewers and QA can inspect it. */

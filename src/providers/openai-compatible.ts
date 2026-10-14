@@ -32,6 +32,6 @@ export class OpenAICompatibleProvider implements ModelProvider{
   if(!response.ok)throw new Error(this.name+" request failed ("+response.status+"): "+redact(body.error?.message??"unknown error"));
   const text=body.choices?.[0]?.message?.content??"";
   if(!text)throw new Error(this.name+" returned no text output");
-  return {text,inputTokens:body.usage?.prompt_tokens??0,outputTokens:body.usage?.completion_tokens??0};
+  return {text,inputTokens:body.usage?.prompt_tokens??0,outputTokens:body.usage?.completion_tokens??0,...(body.usage?{tokenSource:"reported" as const}:{})};
  }
 }

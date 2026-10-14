@@ -5,6 +5,7 @@ import {approveTakeover,runTakeover} from "./takeover.js";
 import {fingerprint,takeSnapshot,TakeoverError} from "./takeover-probe.js";
 import {buildTakeoverPlan} from "./takeover-plan.js";
 import {renderTakeoverStatus} from "./takeover-view.js";
+import {noteIntervention} from "./intervention-log.js";
 import {ExecOutcome,gateRecord,junitRecords,loadLedger,recordExec} from "./takeover-exec.js";
 
 const USAGE=[
@@ -52,6 +53,7 @@ try{
  }else if(command==="approve"){
   if(!target)throw new Error(USAGE);
   const record=await approveTakeover(state,target,one("--by")??"owner");
+  await noteIntervention(state.interventions,{kind:"takeover-approval",projectId:record.projectId,actor:record.approvedBy??one("--by")??"owner",via:"npm run takeover",detail:"unlocked writing at "+(record.auditedHead??"unknown head").slice(0,12)});
   console.log(JSON.stringify({projectId:record.projectId,status:record.status,approvedBy:record.approvedBy,approvedAt:record.approvedAt,auditedHead:record.auditedHead},null,2));
  }else if(command==="evidence"){
   const project=subject;

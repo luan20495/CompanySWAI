@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "projectId": "demo-dryrun",
+  "planHash": "f903695a3ba6f2d3",
+  "notes": [],
+  "briefHash": "f903695a3ba6f2d3",
+  "completedPhases": [
+    "PLAN",
+    "ESTIMATE",
+    "APPROVAL",
+    "EXECUTE",
+    "FINALIZE",
+    "RETROSPECTIVE",
+    "DONE"
+  ],
+  "phase": "DONE",
+  "startedAt": "2026-01-14T07:00:00.000Z",
+  "updatedAt": "2026-01-14T07:02:00.000Z",
+  "final": {
+    "status": "ACCEPTED",
+    "reasons": [
+      "fixture"
+    ],
+    "risks": [],
+    "qa": {
+      "status": "NOT_RUN",
+      "required": false
+    },
+    "tasks": {
+      "completed": 1,
+      "failed": 0,
+      "paused": 0,
+      "waiting": 0,
+      "approvalRequired": 0
+    },
+    "at": "2026-01-14T07:02:00.000Z"
+  }
+}

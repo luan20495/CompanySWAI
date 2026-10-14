@@ -1,0 +1,44 @@
+{
+  "projectId": "demo-parked",
+  "mode": "BALANCED",
+  "maxQAReworkRounds": 2,
+  "budget": {
+    "maxTeamCost": {},
+    "maxAgentCost": {}
+  },
+  "research": {
+    "enabled": false,
+    "maxSourceAgeDays": 730,
+    "connectors": []
+  },
+  "signals": [],
+  "tasks": [
+    {
+      "capabilities": [
+        "reasoning"
+      ],
+      "estimatedInputTokens": 1000,
+      "estimatedOutputTokens": 1000,
+      "id": "svc",
+      "agentRole": "backend-engineer",
+      "department": "engineering",
+      "dependencies": [],
+      "system": "# Synthetic fixture company\nRole instructions for the fixture.",
+      "prompt": "Synthetic task svc",
+      "inputRefs": [],
+      "produces": [],
+      "risk": "medium",
+      "skills": [],
+      "requiredGates": [],
+      "deliversCode": false,
+      "priority": 0,
+      "contract": {
+        "sections": [],
+        "verdict": false,
+        "validators": [],
+        "params": {}
+      },
+      "maxTokens": 4096
+    }
+  ]
+}

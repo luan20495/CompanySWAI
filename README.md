@@ -70,6 +70,9 @@ Add to a brief: `workspacePath`, `checks`, `gates` (`typecheck`, `unit-tests`, `
 ## Scheduling and observability
 An event-driven DAG scheduler (no polling): critical-path priority with aging, per-project and per-provider concurrency, backpressure, work stealing between eligible providers, cooldown waits for rate-limited providers, bounded retries only for provider failures. Runs report queue wait, task latency, provider utilisation, retries, throughput and token/cost usage. `npm run status -- <project> --json` (or without `--json` for a loopback API: `/status`, `/tasks`, `/telemetry`, `/executions`) shows phase, running/queued tasks, providers, elapsed time, usage, retries, blockers and the final verdict.
 
+## Company scorecard and baseline (Evolution Phase 0)
+`npm run scorecard` is a read-only owner view over a state directory: what is running now and which role holds it, what finished or failed (with the reason and the responsible role), wall-clock time from recorded timestamps, tokens by source (provider-reported, fixture-estimated, unknown), human interventions, and the metric catalog with numerator, denominator and coverage. Anything not measured is printed as UNKNOWN or NOT AVAILABLE, never 0. `--project <id>` shows one project task by task, `--baseline` recomputes the historical audit's claims, `--json` is machine-readable. New runs record the company version (git commit + hash of `company/`, `agents/`, `skills/`) and where their plan came from; `npm run intervene` records what a person did outside the engine. Details: `docs/evolution/README.md`, metric definitions: `docs/evolution/METRICS.md`, golden fixture: `benchmarks/evolution/p0/`.
+
 ## Using Claude Code as the CompanySWAI Operator
 ```bash
 cd CompanySWAI

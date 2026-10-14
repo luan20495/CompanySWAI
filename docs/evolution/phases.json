@@ -1,0 +1,14 @@
+{
+  "name": "CompanySWAI Evolution Program",
+  "phases": [
+    {"id": "P0", "title": "Baseline, metrics & owner visibility", "status": "IN_REVIEW", "ownerUat": "PENDING", "issue": 10, "branch": "evolution/phase-0-observability", "pr": null},
+    {"id": "P1", "title": "Trustworthy quality & governance", "status": "NOT_STARTED", "ownerUat": "PENDING"},
+    {"id": "P2", "title": "Interactive product discovery", "status": "NOT_STARTED", "ownerUat": "PENDING"},
+    {"id": "P3", "title": "Internal planning & dispatch", "status": "NOT_STARTED", "ownerUat": "PENDING"},
+    {"id": "P4", "title": "Engineering execution intelligence", "status": "NOT_STARTED", "ownerUat": "PENDING"},
+    {"id": "P5", "title": "Organizational memory & failure learning", "status": "NOT_STARTED", "ownerUat": "PENDING"},
+    {"id": "P6", "title": "Elastic organization & resource intelligence", "status": "NOT_STARTED", "ownerUat": "PENDING"},
+    {"id": "P7", "title": "Complete delivery lifecycle", "status": "NOT_STARTED", "ownerUat": "PENDING"},
+    {"id": "P8", "title": "Supervised self-evolution", "status": "NOT_STARTED", "ownerUat": "PENDING"}
+  ]
+}
