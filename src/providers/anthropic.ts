@@ -16,11 +16,16 @@ export class AnthropicProvider implements ModelProvider{
    .filter(block=>block.type==="text")
    .map(block=>block.text)
    .join("\n");
+  // The Messages API reports prompt-cache writes and reads separately from input_tokens. inputTokens is the total input
+  // processed (same convention as the claude-code provider); the cache parts are kept so reports can split them out.
+  const usage=response.usage,cacheCreation=usage.cache_creation_input_tokens??undefined,cacheRead=usage.cache_read_input_tokens??undefined;
   return {
    text,
-   inputTokens:response.usage.input_tokens,
-   outputTokens:response.usage.output_tokens,
-   tokenSource:"reported"
+   inputTokens:usage.input_tokens+(cacheCreation??0)+(cacheRead??0),
+   outputTokens:usage.output_tokens,
+   tokenSource:"reported",
+   ...(cacheCreation!=null?{cacheCreationInputTokens:cacheCreation}:{}),
+   ...(cacheRead!=null?{cacheReadInputTokens:cacheRead}:{})
   };
  }
 }

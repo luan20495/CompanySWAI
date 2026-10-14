@@ -49,7 +49,9 @@ export type RunFact={
  projectId:string;phase?:string;final?:string;finalQa?:string;startedAt?:string;endedAt?:string;activeMs?:number;
  engine:{state:"IDLE"|"RUNNING"|"INTERRUPTED"|"FINISHED";pid?:number;running:Array<{taskId:string;role:string;elapsedMs:number}>};
  planSource:{value:string;basis:Basis};lessonsInjected:{value?:number;basis:Basis};companyVersion?:CompanyVersionValue;
- tasks:TaskFact[];attempts:{maker:number;review:number;failed:number;inFlight:number};tokens:TokenTally;knownCost:number;subscriptionAttempts:number;
+ tasks:TaskFact[];attempts:{maker:number;review:number;failed:number;inFlight:number};
+ /** Times the engine parked a step because no provider had capacity (no provider call was made). */
+ capacityPauses:number;tokens:TokenTally;knownCost:number;subscriptionAttempts:number;
  reviewVerdicts:{pass:number;changesRequired:number};qa:Array<{taskId:string;verdict:QaVerdict}>;qaConflict:boolean;
  failures:Array<{taskId:string;role:string;reason:string;at?:string}>;interventions?:number;issues:string[];
  skillsSelected:Record<string,number>;
@@ -65,8 +67,8 @@ export type Scorecard={
  checkout?:CompanyVersionValue;program?:{name:string;phases:ProgramPhase[]};
  totals:{projects:number;runs:number;byFinal:Record<string,number>;running:number;attempts:number;makerTasks:number};
  runs:RunFact[];metrics:MetricResult[];
- interventions:{logExists:boolean;since?:string;total:number;unreadable:number;byKind:Record<string,number>};
- coverage:{unreadableLogLines:number;runsWithoutState:number;runsWithoutPlan:number;unreadableRunFiles:number;attemptsWithoutFinish:number;estimatedTokenAttempts:number;unknownTokenAttempts:number;provenanceRecorded:number;versionRecorded:number};
+ interventions:{logExists:boolean;since?:string;total:number;attributed:number;unattributed:number;unreadable:number;byKind:Record<string,number>};
+ coverage:{capacityPauses:number;unreadableLogLines:number;runsWithoutState:number;runsWithoutPlan:number;unreadableRunFiles:number;attemptsWithoutFinish:number;estimatedTokenAttempts:number;unknownTokenAttempts:number;provenanceRecorded:number;versionRecorded:number};
 };
 
 const Program=z.object({name:z.string(),phases:z.array(z.object({id:z.string(),title:z.string(),status:z.string(),ownerUat:z.string(),issue:z.number().optional(),branch:z.string().optional(),pr:z.number().nullable().optional()}))});
@@ -92,12 +94,26 @@ export async function scorecardProjectIds(root:string){
  return [...ids].sort();
 }
 
-/** One attempt per execution-record id: its last line decides the status; tokens come from the last line that carries them. */
-export function foldAttempts(records:ExecutionRecordValue[]):AttemptFact[]{
+function linesById(records:ExecutionRecordValue[]){
  const byId=new Map<string,ExecutionRecordValue[]>();
  for(const r of records){const list=byId.get(r.id)??[];list.push(r);byId.set(r.id,list);}
+ return byId;
+}
+/**
+ * A capacity pause (TaskRunner.pauseCapacity) is a standalone PAUSED_CAPACITY record written when no provider could take the step:
+ * no STARTED line, no provider call. It is not an execution attempt and is counted separately.
+ */
+const isCapacityPause=(lines:ExecutionRecordValue[])=>!lines.some(l=>l.status==="STARTED")&&lines.at(-1)!.status==="PAUSED_CAPACITY";
+export function countCapacityPauses(records:ExecutionRecordValue[]){return [...linesById(records).values()].filter(isCapacityPause).length;}
+
+/**
+ * One attempt per execution-record id (one provider call plus its repair rounds): its last line decides the status; tokens come
+ * from the last line that carries them. Capacity pauses are excluded (see isCapacityPause).
+ */
+export function foldAttempts(records:ExecutionRecordValue[]):AttemptFact[]{
  const out:AttemptFact[]=[];
- for(const lines of byId.values()){
+ for(const lines of linesById(records).values()){
+  if(isCapacityPause(lines))continue;
   const last=lines.at(-1)!,status:AttemptStatus=last.status==="STARTED"||last.status==="CHECKPOINTED"?"IN_FLIGHT":last.status;
   const usage=[...lines].reverse().find(l=>l.tokenSource||l.inputTokens+l.outputTokens>0)??last;
   const token:AttemptFact["token"]=usage.tokenSource?{class:usage.tokenSource,basis:"recorded"}
@@ -187,6 +203,7 @@ function buildRun(p:Loaded,options:{now:number;isAlive?:(pid:number)=>boolean}):
   projectId:p.projectId,phase:run?.phase,final,finalQa:run?.final?.qa.status,startedAt:run?.startedAt??starts[0],endedAt:run?.final?.at??ends.at(-1),activeMs:ms(starts[0],ends.at(-1)),
   engine:{state:live.state,pid:live.pid,running:live.running.map(r=>({taskId:r.taskId,role:r.agentRole||byTaskPlan.get(r.taskId)?.agentRole||"unknown",elapsedMs:r.elapsedMs}))},
   planSource,lessonsInjected:lessons,companyVersion:run?.companyVersion,tasks,
+  capacityPauses:countCapacityPauses(records),
   attempts:{maker:attempts.filter(a=>a.kind==="maker").length,review:attempts.filter(a=>a.kind==="review").length,failed:attempts.filter(a=>a.status==="FAILED").length,inFlight:attempts.filter(a=>a.status==="IN_FLIGHT").length},
   tokens:tallyTokens(attempts),knownCost:attempts.reduce((n,a)=>n+(a.billing==="metered"&&a.cost!=null?a.cost:0),0),subscriptionAttempts:attempts.filter(a=>a.billing==="subscription").length,
   reviewVerdicts:{pass:tasks.reduce((n,t)=>n+t.reviews.pass,0),changesRequired:tasks.reduce((n,t)=>n+t.reviews.changesRequired,0)},
@@ -213,7 +230,7 @@ function metric(id:string,values:Partial<MetricResult>):MetricResult{
  return {id,name:def.name,unit:def.unit,status:value===null?"UNKNOWN":"MEASURED",value,numerator:values.numerator??null,denominator:values.denominator??null,coverage:values.coverage,reason:value===null?(values.reason??"no data in the window"):values.reason,source:def.source,limitations:def.limitations};
 }
 
-function computeMetrics(runs:RunFact[],loaded:Map<string,Loaded>,interventions:{entries:InterventionValue[];exists:boolean;since?:string},now:number):MetricResult[]{
+function computeMetrics(runs:RunFact[],loaded:Map<string,Loaded>,interventions:{exists:boolean;since?:string;unattributed:number},now:number):MetricResult[]{
  const finished=runs.filter(r=>r.final),accepted=finished.filter(r=>ACCEPTED.has(r.final!));
  const qaBad=runs.filter(r=>r.qa.some(q=>q.verdict==="FAIL"||q.verdict==="BLOCKED"));
  const makerTasks=runs.flatMap(r=>r.tasks.filter(t=>t.attempts>0&&t.firstAttempt&&t.firstAttempt!=="IN_FLIGHT"));
@@ -240,10 +257,12 @@ function computeMetrics(runs:RunFact[],loaded:Map<string,Loaded>,interventions:{
  const withPlan=runs.filter(r=>r.lessonsInjected.value!==undefined),withLessons=withPlan.filter(r=>(r.lessonsInjected.value??0)>0);
  const acceptedReported=accepted.reduce((n,r)=>n+r.tokens.reported.input+r.tokens.reported.output,0),acceptedWithUsage=accepted.filter(r=>r.tokens.reported.attempts>0);
  const durations=finishedAttempts.map(a=>a.durationMs).filter((x):x is number=>x!==undefined);
- const intervals=runs.map(r=>{const atts=foldAttempts(loaded.get(r.projectId)!.records);const s=atts.map(a=>Date.parse(a.startedAt)),e=atts.map(a=>a.finishedAt?Date.parse(a.finishedAt):a.status==="IN_FLIGHT"&&r.engine.state==="RUNNING"?now:Date.parse(a.startedAt));return s.length?[Math.min(...s),Math.max(...e)] as [number,number]:undefined;}).filter((x):x is [number,number]=>Boolean(x));
+ // Activity = union of individual attempt intervals: waits between attempts (approval, capacity, a person) are not busy time.
+ // Only an attempt still in flight on a live engine extends to now; an interrupted one counts from its start only.
+ const intervals=runs.flatMap(r=>foldAttempts(loaded.get(r.projectId)!.records).map(a=>[Date.parse(a.startedAt),a.finishedAt?Date.parse(a.finishedAt):a.status==="IN_FLIGHT"&&r.engine.state==="RUNNING"?now:Date.parse(a.startedAt)] as [number,number]));
  const activity=union(intervals);
- const covered=interventions.exists&&interventions.since?runs.filter(r=>r.startedAt&&r.startedAt>=interventions.since!):[];
- const coveredIds=new Set(covered.map(r=>r.projectId)),coveredAccepted=covered.filter(r=>r.final&&ACCEPTED.has(r.final));
+ const covered=runs.filter(r=>r.interventions!==undefined),coveredAccepted=covered.filter(r=>r.final&&ACCEPTED.has(r.final));
+ const attributed=covered.reduce((n,r)=>n+(r.interventions??0),0);
  const metered=allAttempts.filter(a=>a.billing==="metered"&&a.cost!=null),subscription=allAttempts.filter(a=>a.billing==="subscription");
  const tokenCoverage=finishedAttempts.length?reportedAll.length+"/"+finishedAttempts.length+" finished attempts have provider-reported usage":undefined;
  return [
@@ -261,11 +280,29 @@ function computeMetrics(runs:RunFact[],loaded:Map<string,Loaded>,interventions:{
   metric("tokens_per_accepted_run",{numerator:acceptedReported,denominator:acceptedWithUsage.length,value:acceptedWithUsage.length?Math.round(acceptedReported/acceptedWithUsage.length):null,coverage:acceptedWithUsage.length+"/"+accepted.length+" accepted runs have reported usage",reason:acceptedWithUsage.length?undefined:"no accepted run has reported usage"}),
   metric("median_attempt_ms",{numerator:null,denominator:durations.length,value:median(durations)}),
   metric("accepted_runs_per_busy_hour",{numerator:accepted.length,denominator:Number((activity.covered/3_600_000).toFixed(3)),value:activity.covered>0?Number((accepted.length/(activity.covered/3_600_000)).toFixed(2)):null}),
-  metric("dispatch_gap_ms",{numerator:activity.gap,denominator:null,value:intervals.length>1?activity.gap:null,reason:intervals.length>1?undefined:"fewer than two runs with activity"}),
-  metric("interventions_per_accepted_run",interventions.exists&&interventions.since?{numerator:interventions.entries.filter(e=>e.projectId&&coveredIds.has(e.projectId)).length,denominator:coveredAccepted.length,value:ratio(interventions.entries.filter(e=>e.projectId&&coveredIds.has(e.projectId)).length,coveredAccepted.length),coverage:covered.length+" run(s) started after the log began ("+interventions.since+")",reason:coveredAccepted.length?undefined:"no accepted run started after the intervention log began"}:{value:null,reason:"no intervention log: interventions before Phase 0 were never recorded"}),
+  metric("dispatch_gap_ms",{numerator:activity.gap,denominator:null,value:intervals.length>1?activity.gap:null,reason:intervals.length>1?undefined:"fewer than two attempts"}),
+  metric("interventions_per_accepted_run",interventions.exists&&interventions.since?{numerator:attributed,denominator:coveredAccepted.length,value:ratio(attributed,coveredAccepted.length),coverage:covered.length+" run(s) started after the log began ("+interventions.since+"); "+interventions.unattributed+" intervention(s) not attributable to a run in view",reason:coveredAccepted.length?undefined:"no accepted run started after the intervention log began"}:{value:null,reason:"no intervention log: interventions before Phase 0 were never recorded"}),
   metric("known_cost",{numerator:null,denominator:null,value:metered.length?Number(metered.reduce((n,a)=>n+(a.cost??0),0).toFixed(6)):null,coverage:metered.length+" metered attempt(s) with a cost; "+subscription.length+" subscription attempt(s) UNKNOWN",reason:metered.length?undefined:"no metered attempt with a recorded cost (subscription usage has no price)"}),
   ...["skill_outcome_effect","repeated_error_rate","model_escalation_success","release_readiness"].map(id=>metric(id,{}))
  ];
+}
+
+/** A dispatch is recorded just before the run it starts; interventions this long before a run's start still belong to it. */
+export const DISPATCH_GRACE_MS=10*60_000;
+const epoch=(iso:string|undefined,name:string)=>{if(iso===undefined)return undefined;const ms=Date.parse(iso);if(Number.isNaN(ms))throw new Error(name+" is not a valid timestamp: "+iso);return ms;};
+/**
+ * Interventions that belong to a run: same project id, recorded no earlier than DISPATCH_GRACE_MS before the run started.
+ * (A project id names one run state, so later entries — approvals, resumes, a manual re-dispatch after a failure — are about it.)
+ * Entries without a project, for projects not in view, or older than the run are left unattributed and reported as such.
+ */
+export function attributeInterventions(runs:Array<{projectId:string;startedAt?:string}>,entries:InterventionValue[]){
+ const byRun=new Map<string,number>(),used=new Set<string>();
+ for(const r of runs){
+  const start=r.startedAt?Date.parse(r.startedAt):NaN;if(Number.isNaN(start))continue;
+  const mine=entries.filter(e=>e.projectId===r.projectId&&Date.parse(e.ts)>=start-DISPATCH_GRACE_MS);
+  byRun.set(r.projectId,mine.length);for(const e of mine)used.add(e.id);
+ }
+ return {byRun,unattributed:entries.filter(e=>!used.has(e.id)).length};
 }
 
 export type ScorecardOptions={since?:string;until?:string;now?:number;isAlive?:(pid:number)=>boolean;checkout?:CompanyVersionValue;programPath?:string;projects?:string[]};
@@ -276,10 +313,13 @@ export async function buildScorecard(state:CompanyState,options:ScorecardOptions
  const loaded=new Map<string,Loaded>();
  for(const id of ids)loaded.set(id,await loadProject(state,id));
  const log=await state.interventions.read();
- const since=log.entries.map(e=>e.ts).sort()[0];
+ // Instants are compared as epoch milliseconds, never as strings ("…00Z" and "…00.000Z" or "+07:00" are the same instant).
+ const sinceMs=epoch(options.since,"since"),untilMs=epoch(options.until,"until");
+ const logStart=log.entries.length?Math.min(...log.entries.map(e=>Date.parse(e.ts))):undefined,since=logStart!==undefined?new Date(logStart).toISOString():undefined;
  let runs=[...loaded.values()].map(p=>buildRun(p,{now,isAlive:options.isAlive}));
- if(options.since||options.until)runs=runs.filter(r=>r.startedAt&&(!options.since||r.startedAt>=options.since)&&(!options.until||r.startedAt<options.until));
- for(const r of runs)r.interventions=log.exists&&since&&r.startedAt&&r.startedAt>=since?log.entries.filter(e=>e.projectId===r.projectId).length:undefined;
+ if(sinceMs!==undefined||untilMs!==undefined)runs=runs.filter(r=>{const t=r.startedAt?Date.parse(r.startedAt):NaN;return !Number.isNaN(t)&&(sinceMs===undefined||t>=sinceMs)&&(untilMs===undefined||t<untilMs);});
+ const attribution=attributeInterventions(runs,log.entries);
+ for(const r of runs){const t=r.startedAt?Date.parse(r.startedAt):NaN;r.interventions=logStart!==undefined&&!Number.isNaN(t)&&t>=logStart-DISPATCH_GRACE_MS?attribution.byRun.get(r.projectId)??0:undefined;}
  const allAttempts=runs.flatMap(r=>foldAttempts(loaded.get(r.projectId)!.records));
  const byFinal:Record<string,number>={};for(const r of runs){const k=r.final??(r.engine.state==="RUNNING"?"RUNNING":"NO_FINAL_STATUS");byFinal[k]=(byFinal[k]??0)+1;}
  const byKind:Record<string,number>={};for(const e of log.entries)byKind[e.kind]=(byKind[e.kind]??0)+1;
@@ -288,11 +328,12 @@ export async function buildScorecard(state:CompanyState,options:ScorecardOptions
  const times=allAttempts.flatMap(a=>[a.startedAt,a.finishedAt].filter((x):x is string=>Boolean(x))).sort();
  return {
   generatedAt:new Date(now).toISOString(),stateDir:state.root,readOnly:true,catalogVersion:METRIC_CATALOG_VERSION,
-  window:{since:options.since,until:options.until,firstActivity:times[0],lastActivity:times.at(-1)},checkout:options.checkout,program,
+  window:{since:sinceMs!==undefined?new Date(sinceMs).toISOString():undefined,until:untilMs!==undefined?new Date(untilMs).toISOString():undefined,firstActivity:times[0],lastActivity:times.at(-1)},checkout:options.checkout,program,
   totals:{projects:ids.length,runs:runs.length,byFinal,running:runs.filter(r=>r.engine.state==="RUNNING").length,attempts:allAttempts.length,makerTasks:runs.reduce((n,r)=>n+r.tasks.filter(t=>t.attempts>0).length,0)},
-  runs,metrics:computeMetrics(runs,loaded,{entries:log.entries,exists:log.exists,since},now),
-  interventions:{logExists:log.exists,since,total:log.entries.length,unreadable:log.unreadable,byKind},
+  runs,metrics:computeMetrics(runs,loaded,{exists:log.exists,since,unattributed:attribution.unattributed},now),
+  interventions:{logExists:log.exists,since,total:log.entries.length,attributed:[...attribution.byRun.values()].reduce((a,b)=>a+b,0),unattributed:attribution.unattributed,unreadable:log.unreadable,byKind},
   coverage:{
+   capacityPauses:runs.reduce((n,r)=>n+r.capacityPauses,0),
    unreadableLogLines:runs.reduce((n,r)=>n+loaded.get(r.projectId)!.unreadable,0),
    runsWithoutState:runs.filter(r=>!loaded.get(r.projectId)!.run).length,runsWithoutPlan:runs.filter(r=>!loaded.get(r.projectId)!.plan).length,
    unreadableRunFiles:runs.filter(r=>r.issues.some(i=>i.includes("unreadable")&&!i.includes("log line"))).length,

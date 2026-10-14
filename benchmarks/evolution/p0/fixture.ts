@@ -18,6 +18,8 @@ import {LESSONS_HEADER} from "../../../src/plan-compiler.js";
  *   demo-failed-timeout   provider timeout (no usage → UNKNOWN tokens), then a gate failure; run FAILED; one torn log line
  *   demo-dryrun           dry-run provider: tokens are fixture estimates, never counted as real usage
  *   demo-running          an engine that started and has not finished (pid decides RUNNING vs INTERRUPTED)
+ *   demo-parked           two capacity pauses (no provider call) and a 2-hour wait before one real attempt: pauses are not
+ *                         attempts and the wait is not busy time; an intervention from a day before the run is not attributed
  */
 export const RUNNING_PID=424242;
 export const FIXTURE_NOW=Date.parse("2026-01-20T12:30:00.000Z");
@@ -123,12 +125,27 @@ export async function buildFixture(root:string){
    {ts:T(20,12,5),runId:"run-fixture-1",pid:RUNNING_PID,type:"provider.selected",taskId:"build",profileId:"fixture-profile",provider:"claude-code",model:"claude-sonnet-fixture"}
   ]));
  }
+ // demo-parked
+ {
+  const id="demo-parked";
+  const plan=planOf(id,[task("svc","backend-engineer")]),hash=hashOf(plan);
+  put("runs/"+id+".plan.json",plan);
+  put("runs/"+id+".json",runState(id,plan,{briefHash:hash,completedPhases:["PLAN","ESTIMATE","APPROVAL","EXECUTE","FINALIZE","RETROSPECTIVE","DONE"],phase:"DONE",startedAt:T(15,8,0),updatedAt:T(15,10,6),final:final("ACCEPTED","NOT_RUN",T(15,10,6),1)}));
+  const pause=(n:number,at:string)=>ExecutionRecord.parse({id:"g700000"+n+"-0000-4000-8000-000000000000",projectId:id,taskId:"svc",agentRole:"backend-engineer",provider:"unassigned",model:"unassigned",status:"PAUSED_CAPACITY",startedAt:at,finishedAt:at,error:"no provider capacity: rate limited"});
+  put("executions/"+id+"/records.jsonl",jsonl([
+   pause(1,T(15,8,0,5)),pause(2,T(15,9,0)),
+   ...attempt({id:"g7000000-0000-4000-8000-000000000003",projectId:id,taskId:"svc",role:"backend-engineer",start:T(15,10,0),end:T(15,10,5),status:"SUCCEEDED",output:out("Service."),inputTokens:10000,outputTokens:2000,tokenSource:"reported",gates:[{name:"unit-tests",status:"PASS"}]})
+  ]));
+ }
  // Interventions: the log begins on 2026-01-13, so only runs started from then on are covered.
  put("interventions.jsonl",jsonl([
   Intervention.parse({id:"i0000000-0000-4000-8000-000000000001",ts:T(13,7,59),kind:"dispatch",projectId:"demo-failed-timeout",actor:"fixture-owner",actorVerified:false,via:"npm run company",detail:"supplied plan"}),
   Intervention.parse({id:"i0000000-0000-4000-8000-000000000002",ts:T(13,9,0),kind:"redispatch",projectId:"demo-failed-timeout",actor:"fixture-owner",actorVerified:false,via:"npm run intervene",detail:"re-ran the failed deploy by hand"}),
   Intervention.parse({id:"i0000000-0000-4000-8000-000000000003",ts:T(14,6,59),kind:"dispatch",projectId:"demo-dryrun",actor:"fixture-owner",actorVerified:false,via:"npm run company",detail:"brief, dry-run"}),
-  Intervention.parse({id:"i0000000-0000-4000-8000-000000000004",ts:T(20,11,59),kind:"dispatch",projectId:"demo-running",actor:"fixture-owner",actorVerified:false,via:"npm run company",detail:"supplied plan"})
+  Intervention.parse({id:"i0000000-0000-4000-8000-000000000004",ts:T(20,11,59),kind:"dispatch",projectId:"demo-running",actor:"fixture-owner",actorVerified:false,via:"npm run company",detail:"supplied plan"}),
+  Intervention.parse({id:"i0000000-0000-4000-8000-000000000005",ts:T(14,8,0),kind:"dispatch",projectId:"demo-parked",actor:"fixture-owner",actorVerified:false,via:"npm run company",detail:"an earlier run of the same id, before this run's state existed"}),
+  Intervention.parse({id:"i0000000-0000-4000-8000-000000000006",ts:T(15,7,59),kind:"dispatch",projectId:"demo-parked",actor:"fixture-owner",actorVerified:false,via:"npm run company",detail:"supplied plan"}),
+  Intervention.parse({id:"i0000000-0000-4000-8000-000000000007",ts:T(15,12,0),kind:"manual",actor:"fixture-owner",actorVerified:false,via:"npm run intervene",detail:"company-level note, no project"})
  ]));
  for(const [path,content] of files){await mkdir(join(root,path,".."),{recursive:true});await writeFile(join(root,path),content,"utf8");}
  return [...files.keys()].sort();

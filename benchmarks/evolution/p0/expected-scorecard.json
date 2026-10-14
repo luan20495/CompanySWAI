@@ -8,16 +8,16 @@
     "lastActivity": "2026-01-20T12:05:00.000Z"
   },
   "totals": {
-    "projects": 6,
-    "runs": 6,
+    "projects": 7,
+    "runs": 7,
     "byFinal": {
-      "ACCEPTED": 4,
+      "ACCEPTED": 5,
       "FAILED": 1,
       "RUNNING": 1
     },
     "running": 1,
-    "attempts": 13,
-    "makerTasks": 7
+    "attempts": 14,
+    "makerTasks": 8
   },
   "runs": [
     {
@@ -83,6 +83,7 @@
           "wallMs": 540000
         }
       ],
+      "capacityPauses": 0,
       "attempts": {
         "maker": 2,
         "review": 1,
@@ -160,6 +161,7 @@
           "wallMs": 1000
         }
       ],
+      "capacityPauses": 0,
       "attempts": {
         "maker": 1,
         "review": 0,
@@ -234,6 +236,7 @@
           "failure": "Gate 'unit-tests' failed: synthetic script error"
         }
       ],
+      "capacityPauses": 0,
       "attempts": {
         "maker": 2,
         "review": 0,
@@ -279,6 +282,80 @@
       "interventions": 2
     },
     {
+      "projectId": "demo-parked",
+      "phase": "DONE",
+      "final": "ACCEPTED",
+      "finalQa": "NOT_RUN",
+      "startedAt": "2026-01-15T08:00:00.000Z",
+      "endedAt": "2026-01-15T10:06:00.000Z",
+      "activeMs": 300000,
+      "engine": {
+        "state": "IDLE",
+        "running": []
+      },
+      "planSource": {
+        "value": "supplied-plan",
+        "basis": "derived"
+      },
+      "lessonsInjected": {
+        "value": 0,
+        "basis": "derived"
+      },
+      "tasks": [
+        {
+          "taskId": "svc",
+          "role": "backend-engineer",
+          "attempts": 1,
+          "firstAttempt": "SUCCEEDED",
+          "lastAttempt": "SUCCEEDED",
+          "done": true,
+          "makerVersions": 1,
+          "reviews": {
+            "pass": 0,
+            "changesRequired": 0
+          },
+          "startedAt": "2026-01-15T10:00:00.000Z",
+          "endedAt": "2026-01-15T10:05:00.000Z",
+          "wallMs": 300000
+        }
+      ],
+      "capacityPauses": 2,
+      "attempts": {
+        "maker": 1,
+        "review": 0,
+        "failed": 0,
+        "inFlight": 0
+      },
+      "tokens": {
+        "reported": {
+          "input": 10000,
+          "output": 2000,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "attempts": 1
+        },
+        "estimated": {
+          "input": 0,
+          "output": 0,
+          "attempts": 0
+        },
+        "partialAttempts": 0,
+        "unknownAttempts": 0
+      },
+      "knownCost": 0,
+      "subscriptionAttempts": 1,
+      "reviewVerdicts": {
+        "pass": 0,
+        "changesRequired": 0
+      },
+      "qa": [],
+      "qaConflict": false,
+      "failures": [],
+      "issues": [],
+      "skillsSelected": {},
+      "interventions": 1
+    },
+    {
       "projectId": "demo-qa-conflict",
       "phase": "DONE",
       "final": "ACCEPTED",
@@ -317,6 +394,7 @@
           "wallMs": 480000
         }
       ],
+      "capacityPauses": 0,
       "attempts": {
         "maker": 1,
         "review": 0,
@@ -414,6 +492,7 @@
           }
         }
       ],
+      "capacityPauses": 0,
       "attempts": {
         "maker": 1,
         "review": 0,
@@ -487,6 +566,7 @@
           "wallMs": 1920000
         }
       ],
+      "capacityPauses": 0,
       "attempts": {
         "maker": 3,
         "review": 2,
@@ -528,9 +608,9 @@
       "name": "Accepted runs",
       "unit": "ratio",
       "status": "MEASURED",
-      "value": 0.8,
-      "numerator": 4,
-      "denominator": 5,
+      "value": 0.8333,
+      "numerator": 5,
+      "denominator": 6,
       "source": "runs/<project>.json final.status",
       "limitations": "A run's ACCEPTED is the engine's own verdict; before Phase 1 it can disagree with QA (see qa_conflict_rate)."
     },
@@ -551,9 +631,9 @@
       "name": "First attempt passes",
       "unit": "ratio",
       "status": "MEASURED",
-      "value": 0.6667,
-      "numerator": 4,
-      "denominator": 6,
+      "value": 0.7143,
+      "numerator": 5,
+      "denominator": 7,
       "source": "executions/<project>/records.jsonl (one attempt = one record id)",
       "limitations": "Not acceptance: a successful attempt can still get CHANGES_REQUIRED from review."
     },
@@ -562,10 +642,10 @@
       "name": "Accepted on first pass",
       "unit": "ratio",
       "status": "MEASURED",
-      "value": 0.6667,
-      "numerator": 4,
-      "denominator": 6,
-      "coverage": "6/6 runs have a readable plan",
+      "value": 0.7143,
+      "numerator": 5,
+      "denominator": 7,
+      "coverage": "7/7 runs have a readable plan",
       "source": "engine taskHistory over the execution log, plan and QA rework requests; reviews/",
       "limitations": "Needs the persisted plan; projects without one are excluded (coverage shown)."
     },
@@ -574,9 +654,9 @@
       "name": "Failed maker attempts",
       "unit": "ratio",
       "status": "MEASURED",
-      "value": 0.3333,
+      "value": 0.3,
       "numerator": 3,
-      "denominator": 9,
+      "denominator": 10,
       "source": "executions records",
       "limitations": "Mixes causes; failure signatures arrive in Phase 5."
     },
@@ -585,10 +665,10 @@
       "name": "Tokens spent on failed attempts",
       "unit": "ratio",
       "status": "MEASURED",
-      "value": 0.275,
+      "value": 0.257,
       "numerator": 47000,
-      "denominator": 170900,
-      "coverage": "10/12 finished attempts have provider-reported usage",
+      "denominator": 182900,
+      "coverage": "11/13 finished attempts have provider-reported usage",
       "source": "executions records (inputTokens, outputTokens, tokenSource)",
       "limitations": "Attempts without reported usage (timeouts, fixtures) are excluded; coverage shown."
     },
@@ -621,10 +701,10 @@
       "name": "Plans supplied from outside",
       "unit": "ratio",
       "status": "MEASURED",
-      "value": 0.8333,
-      "numerator": 5,
-      "denominator": 6,
-      "coverage": "2 recorded, 4 derived from hashes",
+      "value": 0.8571,
+      "numerator": 6,
+      "denominator": 7,
+      "coverage": "2 recorded, 5 derived from hashes",
       "source": "runs provenance (recorded from Phase 0); older runs derived from briefHash==planHash",
       "limitations": "Derived values are labelled; a reprioritised or replanned run can make the derivation wrong."
     },
@@ -633,9 +713,9 @@
       "name": "Plans carrying company lessons",
       "unit": "ratio",
       "status": "MEASURED",
-      "value": 0.1667,
+      "value": 0.1429,
       "numerator": 1,
-      "denominator": 6,
+      "denominator": 7,
       "source": "runs/<project>.plan.json",
       "limitations": "Presence only; whether a lesson helped is not measured until Phase 5."
     },
@@ -644,10 +724,10 @@
       "name": "Provider-reported tokens",
       "unit": "tokens",
       "status": "MEASURED",
-      "value": 170900,
-      "numerator": 170900,
+      "value": 182900,
+      "numerator": 182900,
       "denominator": null,
-      "coverage": "10/12 finished attempts have provider-reported usage",
+      "coverage": "11/13 finished attempts have provider-reported usage",
       "source": "executions records",
       "limitations": "Subscription usage has no price; fixture (dry-run) estimates are counted separately and never added."
     },
@@ -656,10 +736,10 @@
       "name": "Reported tokens per accepted run",
       "unit": "tokens",
       "status": "MEASURED",
-      "value": 49633,
-      "numerator": 148900,
-      "denominator": 3,
-      "coverage": "3/4 accepted runs have reported usage",
+      "value": 40225,
+      "numerator": 160900,
+      "denominator": 4,
+      "coverage": "4/5 accepted runs have reported usage",
       "source": "executions records, runs",
       "limitations": "Task size differs between runs; not comparable across different work."
     },
@@ -670,7 +750,7 @@
       "status": "MEASURED",
       "value": 420000,
       "numerator": null,
-      "denominator": 12,
+      "denominator": 13,
       "source": "executions records timestamps",
       "limitations": "Includes provider latency and gates; not queue time."
     },
@@ -679,32 +759,32 @@
       "name": "Accepted runs per busy hour",
       "unit": "per-hour",
       "status": "MEASURED",
-      "value": 2.14,
-      "numerator": 4,
-      "denominator": 1.867,
+      "value": 2.7,
+      "numerator": 5,
+      "denominator": 1.85,
       "source": "executions records timestamps",
       "limitations": "Runs differ in size; idle time between dispatches is excluded on purpose (see dispatch gap)."
     },
     {
       "id": "dispatch_gap_ms",
-      "name": "Total idle gap between runs",
+      "name": "Idle time between attempts",
       "unit": "ms",
       "status": "MEASURED",
-      "value": 869819000,
-      "numerator": 869819000,
+      "value": 869879000,
+      "numerator": 869879000,
       "denominator": null,
       "source": "executions records timestamps",
-      "limitations": "Idle can be intentional (owner away); not all of it is waste."
+      "limitations": "Idle can be intentional (owner away); not all of it is waste. Capacity pauses write no attempt, so they fall in the gaps."
     },
     {
       "id": "interventions_per_accepted_run",
       "name": "Human interventions per accepted run",
       "unit": "per-run",
       "status": "MEASURED",
-      "value": 4,
-      "numerator": 4,
-      "denominator": 1,
-      "coverage": "3 run(s) started after the log began (2026-01-13T07:59:00.000Z)",
+      "value": 2.5,
+      "numerator": 5,
+      "denominator": 2,
+      "coverage": "4 run(s) started after the log began (2026-01-13T07:59:00.000Z); 2 intervention(s) not attributable to a run in view",
       "source": "interventions.jsonl (Phase 0+)",
       "limitations": "Actors are self-declared; manual actions outside the engine count only if someone records them."
     },
@@ -716,7 +796,7 @@
       "value": null,
       "numerator": null,
       "denominator": null,
-      "coverage": "0 metered attempt(s) with a cost; 12 subscription attempt(s) UNKNOWN",
+      "coverage": "0 metered attempt(s) with a cost; 13 subscription attempt(s) UNKNOWN",
       "reason": "no metered attempt with a recorded cost (subscription usage has no price)",
       "source": "executions records",
       "limitations": "Subscription runs have no per-call price: their cost is UNKNOWN, never 0."
@@ -773,14 +853,18 @@
   "interventions": {
     "logExists": true,
     "since": "2026-01-13T07:59:00.000Z",
-    "total": 4,
+    "total": 7,
+    "attributed": 5,
+    "unattributed": 2,
     "unreadable": 0,
     "byKind": {
-      "dispatch": 3,
-      "redispatch": 1
+      "dispatch": 5,
+      "redispatch": 1,
+      "manual": 1
     }
   },
   "coverage": {
+    "capacityPauses": 2,
     "unreadableLogLines": 1,
     "runsWithoutState": 0,
     "runsWithoutPlan": 0,

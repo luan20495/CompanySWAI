@@ -1,6 +1,6 @@
 # Phase 0 — Baseline replay (aggregate only)
 
-**Measured with:** `npm run scorecard -- --baseline --json`, metric catalog v1, on branch `evolution/phase-0-observability`.
+**Measured with:** `npm run scorecard -- --baseline --json`, metric catalog v1, on branch `evolution/phase-0-observability` (values updated after the PR #11 review fixes).
 **Data:** a private, byte-identical snapshot of the main checkout's `.companyswai/` taken 2026-10-14T04:46:39Z (7,894 files, tree sha256 prefix `fef80622e4554e10`). The live state was not read again after the snapshot. Raw records, prompts, outputs, project code and machine paths are **not** published; only the aggregate numbers below.
 **Engine version that produced the data:** all runs predate Phase 0, so none carries a recorded company version (0/344) or recorded provenance (0/344). Remote `main` was `3ecdab1` for the whole window except possibly some of the 45 runs on 2026-10-11 before that commit landed (17:50 +0700).
 **Nature:** historical observation, **not** a controlled experiment. Task difficulty, size and acceptance criteria vary between runs; trends across days are not attributable to CompanySWAI changes.
@@ -17,6 +17,7 @@
 | Attempts with provider-reported usage | 771 of 797 finished |
 | Attempts with fixture (dry-run) estimated tokens | 23 |
 | Attempts with no usage reported (timeouts) | 3 |
+| Capacity pauses (no provider call; not attempts) | 0 |
 | Human intervention log | did not exist → interventions are **UNKNOWN**, not zero |
 
 ## Audit claims — independent recomputation
@@ -33,7 +34,8 @@
 
 1. **Token totals in the audit mixed real and synthetic usage.** 23 attempts used the dry-run provider, whose token counts are character-based estimates. Provider-reported usage is **59,310,808** tokens; the audit's 59,366,641 included 55,833 estimated tokens. Phase 0 separates the sources.
 2. **Supplied plans also dropped the QA contract.** Of 114 tasks assigned to the QA role in persisted plans, only 1 carries the `qa-traceability` validator, so the engine did not validate those QA outputs' structure. Another effect of bypassing the planner (relevant to Phase 1/3).
-3. **"Busy time" depends on the definition.** Measured from attempt timestamps it is 24h 43m; the audit's 27.9h used run start/update times. The catalog fixes the definition (union of attempt intervals).
+3. **"Busy time" depends on the definition.** The catalog defines it as the union of individual attempt intervals: **21h 12m**. Per-run envelopes (first attempt start → last attempt finish) gave 24h 43m — the first version of this report used that, corrected after review (PR #11) because waits inside a run are not busy time; the audit's 27.9h used run start/update times.
+4. **No capacity pauses occurred** in the window (0 standalone `PAUSED_CAPACITY` records), so excluding them from attempts changes no historical number; it protects future runs.
 
 ## Baseline metrics (catalog v1)
 
@@ -52,8 +54,8 @@
 | `reported_tokens` | 59,310,808 | — | 771/797 finished attempts |
 | `tokens_per_accepted_run` | 154,298 | 47,523,875 / 308 | accepted runs with reported usage |
 | `median_attempt_ms` | 52s | 797 attempts | |
-| `accepted_runs_per_busy_hour` | 12.5 /h | 309 / 24.73 h | runs are mostly single-task micro-runs |
-| `dispatch_gap_ms` | 112h 12m | — | includes the 3-day gap between 10-08 and 10-11 |
+| `accepted_runs_per_busy_hour` | 14.58 /h | 309 / 21.19 h | busy = union of attempt intervals; runs are mostly single-task micro-runs |
+| `dispatch_gap_ms` | 115h 44m | — | idle time between attempts (inside or between runs); includes the 3-day gap between 10-08 and 10-11 |
 | `interventions_per_accepted_run` | UNKNOWN | — | no log before Phase 0 |
 | `known_cost` | UNKNOWN | — | 775 subscription attempts have no per-call price |
 | `skill_outcome_effect` | NOT AVAILABLE | — | Phase 4 |

@@ -66,12 +66,12 @@ export function renderScorecard(card:Scorecard,options:{failedLimit?:number}={})
  const m=(id:string)=>card.metrics.find(x=>x.id===id)!;
  const att=card.runs.reduce((t,r)=>({maker:t.maker+r.attempts.maker,review:t.review+r.attempts.review,failed:t.failed+r.attempts.failed,flight:t.flight+r.attempts.inFlight}),{maker:0,review:0,failed:0,flight:0});
  lines.push("TIME & RESOURCES");
- lines.push("  Attempts: "+(att.maker+att.review)+" (maker "+att.maker+", review "+att.review+"), failed "+att.failed+", in flight "+att.flight+"; median attempt "+fmtMs(m("median_attempt_ms").value));
- lines.push("  Busy time (any run active): "+fmtMs((m("accepted_runs_per_busy_hour").denominator??0)*3_600_000)+"; idle gaps between runs: "+fmtMs(m("dispatch_gap_ms").value));
+ lines.push("  Attempts (provider calls): "+(att.maker+att.review)+" (maker "+att.maker+", review "+att.review+"), failed "+att.failed+", in flight "+att.flight+"; median attempt "+fmtMs(m("median_attempt_ms").value)+"; capacity pauses (no call made) "+card.coverage.capacityPauses);
+ lines.push("  Busy time (any attempt in progress): "+fmtMs((m("accepted_runs_per_busy_hour").denominator??0)*3_600_000)+"; idle time between attempts: "+fmtMs(m("dispatch_gap_ms").value));
  lines.push(...tokensLine(card));
  const known=m("known_cost"),subs=card.runs.reduce((n,r)=>n+r.subscriptionAttempts,0);
  lines.push("  Money: known metered cost "+(known.value===null?"none recorded":known.value)+"; "+subs+" subscription attempt(s) → cost UNKNOWN (no per-call price)");
- lines.push("  Human interventions: "+(card.interventions.logExists?card.interventions.total+" recorded since "+day(card.interventions.since)+" ("+Object.entries(card.interventions.byKind).map(([k,v])=>k+" "+v).join(", ")+"), actors self-declared":"NOT RECORDED — no intervention log yet; earlier interventions are unknown, not zero"));
+ lines.push("  Human interventions: "+(card.interventions.logExists?card.interventions.total+" recorded since "+day(card.interventions.since)+" ("+Object.entries(card.interventions.byKind).map(([k,v])=>k+" "+v).join(", ")+"), "+card.interventions.attributed+" attributed to runs in view, "+card.interventions.unattributed+" not attributable; actors self-declared":"NOT RECORDED — no intervention log yet; earlier interventions are unknown, not zero"));
  lines.push("");
  lines.push("METRICS (catalog v"+card.catalogVersion+"; definitions: docs/evolution/METRICS.md)");
  for(const x of card.metrics)lines.push("  "+pad(x.id,32)+" "+metricValue(x)+(x.coverage?"  [coverage: "+x.coverage+"]":""));

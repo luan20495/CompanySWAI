@@ -5,7 +5,8 @@ export type ModelRequest={system:string;prompt:string;maxTokens:number;signal?:A
 /**
  * `tokenSource` says where the token counts came from: "reported" by the provider, "estimated" by a fixture, or absent when the
  * provider gave no usage (the counts are then 0 but mean unknown). Cache figures are the part of `inputTokens` the provider
- * reported as cache creation/reads; `inputTokens` keeps including them so budgets and estimates are unchanged.
+ * reported as cache creation/reads. `inputTokens` is the total input processed and includes them (claude-code and anthropic);
+ * budgets therefore price cache tokens at the full input rate, which over- rather than under-estimates cost.
  */
 export type TokenSource="reported"|"estimated";
 export type ModelResponse={text:string;inputTokens:number;outputTokens:number;model?:string;tokenSource?:TokenSource;cacheCreationInputTokens?:number;cacheReadInputTokens?:number};

@@ -2,3 +2,6 @@
 {"id":"i0000000-0000-4000-8000-000000000002","ts":"2026-01-13T09:00:00.000Z","kind":"redispatch","projectId":"demo-failed-timeout","actor":"fixture-owner","actorVerified":false,"via":"npm run intervene","detail":"re-ran the failed deploy by hand"}
 {"id":"i0000000-0000-4000-8000-000000000003","ts":"2026-01-14T06:59:00.000Z","kind":"dispatch","projectId":"demo-dryrun","actor":"fixture-owner","actorVerified":false,"via":"npm run company","detail":"brief, dry-run"}
 {"id":"i0000000-0000-4000-8000-000000000004","ts":"2026-01-20T11:59:00.000Z","kind":"dispatch","projectId":"demo-running","actor":"fixture-owner","actorVerified":false,"via":"npm run company","detail":"supplied plan"}
+{"id":"i0000000-0000-4000-8000-000000000005","ts":"2026-01-14T08:00:00.000Z","kind":"dispatch","projectId":"demo-parked","actor":"fixture-owner","actorVerified":false,"via":"npm run company","detail":"an earlier run of the same id, before this run's state existed"}
+{"id":"i0000000-0000-4000-8000-000000000006","ts":"2026-01-15T07:59:00.000Z","kind":"dispatch","projectId":"demo-parked","actor":"fixture-owner","actorVerified":false,"via":"npm run company","detail":"supplied plan"}
+{"id":"i0000000-0000-4000-8000-000000000007","ts":"2026-01-15T12:00:00.000Z","kind":"manual","actor":"fixture-owner","actorVerified":false,"via":"npm run intervene","detail":"company-level note, no project"}

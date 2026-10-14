@@ -24,7 +24,7 @@
 | Human intervention logging | `interventions.jsonl` (append-only, actor self-declared, `actorVerified:false`), written automatically by `company`, `approve`, `experience`, `takeover approve`, operator `stop`/`resume`/`priority --apply`; `npm run intervene` for manual actions | tests "commands record interventions", "operator stop records … only when requested" |
 | Phase and release acceptance status | `docs/evolution/phases.json` printed by the scorecard; release readiness explicitly `NOT TRACKED (Phase 7)` | scorecard output |
 | Plan provenance (minimal) | `provenance: {source: brief|supplied-plan, lessonsInjected, lessonsAvailable}` on new runs; older runs derived from hashes and labelled `derived` | tests "provenance", "a supplied plan is recorded as such" |
-| Reproducible benchmark fixtures | `benchmarks/evolution/p0/`: synthetic 6-project state (accepted, retry+revision, QA conflict, timeout+torn line, dry-run, running engine) + golden scorecard; generator reproduces it byte for byte | tests "committed fixture is exactly what the generator produces", "golden scorecard" |
+| Reproducible benchmark fixtures | `benchmarks/evolution/p0/`: synthetic 7-project state (accepted, retry+revision, QA conflict, timeout+torn line, dry-run, running engine, capacity pauses + idle wait + stale intervention) + golden scorecard; generator reproduces it byte for byte | tests "committed fixture is exactly what the generator produces", "golden scorecard" |
 | Historical evidence coverage | Baseline replay of the audit claims, data-quality section (unreadable lines, missing state/plan, unfinished attempts, estimated/unknown tokens) | [BASELINE.md](BASELINE.md) |
 | Versioned metric definitions | Catalog v1 (`src/metric-catalog.ts`), 21 metrics with numerator, denominator, source, limitations; unavailable ones marked with the phase that makes them measurable | [../METRICS.md](../METRICS.md); test "METRICS.md documents every catalog metric" |
 | No hidden writes | Scorecard reads with a new side-effect-free `FileExecutionStore.read()` (the existing `list()` quarantines by writing) | test "strictly read-only" (tree hash before/after, CLI included, torn line present) |
@@ -50,7 +50,8 @@ Changed (additive): `src/run-store.ts` (optional `companyVersion`, `provenance`)
 | Run | Result |
 |---|---|
 | Baseline before any change (`npm run check` at `3ecdab1`, isolated worktree) | typecheck OK, **320/320** pass |
-| After Phase 0 (`nice -n 15 npm run check`) | typecheck OK, **342/342** pass (320 existing + 22 new), 0 fail, 0 skipped |
+| After Phase 0, first submission `1c1cefe` | typecheck OK, 342/342 pass (320 existing + 22 new) |
+| After review round 1 (`nice -n 15 npm run check`) | typecheck OK, **348/348** pass (320 existing + 28 new), 0 fail, 0 skipped |
 | Read-only proof on real data | scorecard over the live state twice before the isolation gate: tree hash identical before/after; afterwards only a private snapshot was read |
 
 ## 5. Before / after
@@ -87,10 +88,10 @@ npm run scorecard -- --state-dir /tmp/cswai-snapshot                            
 npm run scorecard -- --state-dir /tmp/cswai-snapshot --baseline                       # audit claims recomputed
 npm run intervene -- manual --project demo --detail "UAT check" --actor owner --state-dir /tmp/cswai-uat   # writes only to /tmp
 npm run intervene -- list --state-dir /tmp/cswai-uat
-nice -n 15 npm run check                                                              # 342 tests
+nice -n 15 npm run check                                                              # 348 tests
 ```
 
-Expected: fixture overview shows 1 QA conflict, 1 failed task (devops-sre, gate failure), separate reported/estimated/unknown tokens, interventions "4 recorded since 2026-01-13", `demo-running` as INTERRUPTED (its pid is not alive outside the test); baseline shows C1 340/341, C2 0/341, C3 20/20.
+Expected: fixture overview shows 1 QA conflict, 1 failed task (devops-sre, gate failure), separate reported/estimated/unknown tokens, 2 capacity pauses, interventions "7 recorded since 2026-01-13 … 5 attributed, 2 not attributable", `demo-running` as INTERRUPTED (its pid is not alive outside the test); baseline shows C1 340/341, C2 0/341, C3 20/20.
 
 ## 8. Known limitations
 
@@ -118,11 +119,24 @@ Do not merge, or revert the branch's commits. State written by this branch stays
 3. **Failures now preventable:** none prevented; ACCEPTED-with-QA-FAIL is now *detected* automatically (prevention is Phase 1).
 4. **Faster / more accurate:** not claimed; Phase 0 changes measurement only.
 5. **New risks / overhead:** one extra JSONL file, two read-only git calls per new run, an extra command; unverified actors.
-6. **Evidence:** 342/342 tests, golden fixture, baseline replay with numerators/denominators, read-only hash proof.
+6. **Evidence:** 348/348 tests, golden fixture, baseline replay with numerators/denominators, read-only hash proof.
 7. **Easier or harder to operate:** easier to observe; nothing extra is required to operate.
 8. **Next:** Phase 1 — make QA/reviewer verdicts authoritative (the 20/20 conflict), review-before-integration, request-bound approvals, cross-process locks.
 
-## 12. Rejected approaches
+## 12. Review round 1 (PR #11) — findings and fixes
+
+| Finding | Fix | Regression test |
+|---|---|---|
+| Codex P1 / ChatGPT P1-A: busy time folded each run into one envelope, so waits inside a run counted as busy and were missing from idle time | Activity = union of individual attempt intervals; an in-flight attempt extends to `now` only on a live engine | "busy time is the union of individual attempts …" (two attempts 4h50m apart → 30 min busy, 4h50m idle) |
+| Codex P1 / P1-B: standalone `PAUSED_CAPACITY` records (no provider call) were counted as maker attempts and unknown-token attempts | Records with no STARTED line ending PAUSED_CAPACITY are capacity pauses: excluded from attempts, counted separately (`capacityPauses`) | "capacity pauses are not attempts …" (3 park cycles → identical attempt/first-pass/token facts) + fixture `demo-parked` |
+| Codex P2 / P2-C: direct Anthropic responses dropped prompt-cache creation/read tokens | Cache fields kept; `inputTokens` = input + cache creation + cache read (same as claude-code). Effect: budgets price cache tokens at the full input rate (conservative) | "direct Anthropic responses keep prompt-cache tokens …" (cached and uncached mocks) |
+| Codex P2 / P2-D: `--since/--until` compared ISO strings | Boundaries parsed to epoch ms (invalid → error), runs compared as instants, upper bound exclusive, window reported normalised | "time filters compare instants …" (`…00Z` = `…00.000Z` = `+07:00`, exclusive `until`) |
+| ChatGPT additional: interventions attributed by project id only | An intervention belongs to a run when it names the project and was recorded ≥ run start − 10 min; stale, project-less and out-of-view entries are reported as unattributed | "interventions are attributed per run by time …" + fixture stale entry for `demo-parked` |
+| (found while fixing) METRICS.md could drift from the catalog's definitions | Generated by `benchmarks/evolution/p0/build.ts`; test compares the whole file | "METRICS.md is exactly the catalog" |
+
+Historical baseline effect: busy time 24h 43m → 21h 12m, accepted runs per busy hour 12.5 → 14.58, idle time 112h 12m → 115h 44m; no capacity pauses existed; all other baseline numbers unchanged.
+
+## 13. Rejected approaches
 
 - Extending `operator` views instead of a new command: they load per-task checkpoints/approvals and the store `list()` that quarantines (writes); a separate strictly read-only reader was safer.
 - Identifying QA tasks by role name: violates the Markdown-first rule (a guard test caught it); QA is detected by contract (`qa-traceability`) or by a `## QA Status` section.
