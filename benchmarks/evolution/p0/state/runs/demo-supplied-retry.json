@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "projectId": "demo-supplied-retry",
+  "planHash": "492ffe47f440c927",
+  "notes": [],
+  "briefHash": "492ffe47f440c927",
+  "completedPhases": [
+    "PLAN",
+    "ESTIMATE",
+    "APPROVAL",
+    "EXECUTE",
+    "FINALIZE",
+    "RETROSPECTIVE",
+    "DONE"
+  ],
+  "phase": "DONE",
+  "startedAt": "2026-01-11T10:00:00.000Z",
+  "updatedAt": "2026-01-11T10:40:00.000Z",
+  "final": {
+    "status": "ACCEPTED",
+    "reasons": [
+      "fixture"
+    ],
+    "risks": [],
+    "qa": {
+      "status": "NOT_RUN",
+      "required": false
+    },
+    "tasks": {
+      "completed": 1,
+      "failed": 0,
+      "paused": 0,
+      "waiting": 0,
+      "approvalRequired": 0
+    },
+    "at": "2026-01-11T10:40:00.000Z"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "projectId": "demo-brief-accepted",
+  "mode": "BALANCED",
+  "maxQAReworkRounds": 2,
+  "budget": {
+    "maxTeamCost": {},
+    "maxAgentCost": {}
+  },
+  "research": {
+    "enabled": false,
+    "maxSourceAgeDays": 730,
+    "connectors": []
+  },
+  "signals": [],
+  "tasks": [
+    {
+      "capabilities": [
+        "reasoning"
+      ],
+      "estimatedInputTokens": 1000,
+      "estimatedOutputTokens": 1000,
+      "id": "api",
+      "agentRole": "backend-engineer",
+      "department": "engineering",
+      "dependencies": [],
+      "system": "# Synthetic fixture company\nRole instructions for the fixture.\n\n--- LESSONS FROM PRIOR WORK ---\n- Synthetic lesson.",
+      "prompt": "Synthetic task api",
+      "inputRefs": [],
+      "produces": [],
+      "risk": "medium",
+      "skills": [],
+      "requiredGates": [],
+      "deliversCode": false,
+      "priority": 0,
+      "contract": {
+        "sections": [],
+        "verdict": false,
+        "validators": [],
+        "params": {}
+      },
+      "maxTokens": 4096,
+      "review": {
+        "capabilities": [
+          "review"
+        ],
+        "estimatedInputTokens": 1000,
+        "estimatedOutputTokens": 500,
+        "role": "reviewer",
+        "department": "quality",
+        "system": "# Synthetic fixture company\nRole instructions for the fixture. (reviewer)",
+        "maxTokens": 4096,
+        "maxRounds": 2,
+        "contract": {
+          "sections": [],
+          "verdict": true,
+          "validators": [],
+          "params": {}
+        },
+        "level": "NORMAL",
+        "gates": [],
+        "slots": []
+      }
+    },
+    {
+      "capabilities": [
+        "reasoning"
+      ],
+      "estimatedInputTokens": 1000,
+      "estimatedOutputTokens": 1000,
+      "id": "verify",
+      "agentRole": "qa-engineer",
+      "department": "engineering",
+      "dependencies": [
+        "api"
+      ],
+      "system": "# Synthetic fixture company\nRole instructions for the fixture.",
+      "prompt": "Synthetic task verify",
+      "inputRefs": [],
+      "produces": [],
+      "risk": "medium",
+      "skills": [],
+      "requiredGates": [],
+      "deliversCode": false,
+      "priority": 0,
+      "contract": {
+        "sections": [
+          "Deliverables",
+          "QA Status",
+          "Traceability",
+          "Evidence",
+          "Blockers",
+          "Handoff"
+        ],
+        "verdict": false,
+        "validators": [
+          "qa-traceability"
+        ],
+        "params": {}
+      },
+      "maxTokens": 4096
+    }
+  ]
+}

@@ -60,7 +60,8 @@ export class DryRunProvider implements ModelProvider{
   const body=sections.map(title=>"## "+title+"\n"+(verdict==="CHANGES_REQUIRED"&&title==="Blockers"?"- Dry-run reviewer requests one revision to prove the revision loop.":sectionBody(title,request))).join("\n\n");
   const text=isReviewer?verdict+"\n\n"+(verdict==="CHANGES_REQUIRED"?"Dry-run reviewer requests changes on the first round.\n\n":"")+body:body;
   if(this.options.latencyMs)await new Promise(resolve=>setTimeout(resolve,this.options.latencyMs));
-  return {text,inputTokens:Math.max(1,Math.ceil((request.system.length+request.prompt.length)/4)),outputTokens:Math.max(1,Math.ceil(text.length/4))};
+  // Character-based estimates: no model ran, so these are never real usage.
+  return {text,inputTokens:Math.max(1,Math.ceil((request.system.length+request.prompt.length)/4)),outputTokens:Math.max(1,Math.ceil(text.length/4)),tokenSource:"estimated"};
  }
 }
 

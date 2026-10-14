@@ -5,6 +5,8 @@ import {PATTERNS} from "./retrospective.js";
 
 export type Learning={projectLessons?:string[];experience?:Array<{pattern:string;scope:string}>};
 const GENERIC_CLEAN=PATTERNS.clean;
+/** Heads the block of lessons appended to a system prompt; observability counts it to tell whether a plan carried any. */
+export const LESSONS_HEADER="--- LESSONS FROM PRIOR WORK ---";
 /**
  * Lessons reach an agent only when they apply: this project's own lessons, plus validated company experience whose scope
  * matches — GLOBAL, ROLE:<this agent>, SKILL:<a skill it runs with>, DOMAIN:<a project signal tag>.
@@ -16,7 +18,7 @@ function learningFor(role:string,skills:string[],domains:string[],learning:Learn
   return scope==="company"||kind==="GLOBAL"||((kind==="ROLE"||kind==="role")&&name===role)||(kind==="SKILL"&&skills.includes(name))||(kind==="DOMAIN"&&tags.includes(name.toLowerCase()));
  };
  const lessons=[...own,...(learning.experience??[]).filter(x=>applies(x.scope)).map(x=>x.pattern)];
- return lessons.length?"\n\n--- LESSONS FROM PRIOR WORK ---\n"+lessons.map(x=>"- "+x).join("\n"):"";
+ return lessons.length?"\n\n"+LESSONS_HEADER+"\n"+lessons.map(x=>"- "+x).join("\n"):"";
 }
 
 /** Number of tasks that transitively depend on each task: work on the critical path is scheduled first. */

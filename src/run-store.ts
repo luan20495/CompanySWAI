@@ -5,6 +5,7 @@ import {z} from "zod";
 import {SafeId} from "./ids.js";
 import {writeFileAtomic} from "./fs-atomic.js";
 import {ProjectPlan,type ProjectPlanValue} from "./project.js";
+import {CompanyVersion} from "./company-version.js";
 
 /** The phases of the autonomous pipeline, in order. A run resumes at the first phase that is not recorded as complete. */
 export const PHASES=["PLAN","ESTIMATE","APPROVAL","EXECUTE","FINALIZE","RETROSPECTIVE","DONE"] as const;
@@ -22,7 +23,10 @@ export type FinalStatusValue=z.infer<typeof FinalStatus>;
 const RunState=z.object({
  version:z.literal(1),projectId:SafeId,planHash:z.string(),briefHash:z.string().optional(),
  completedPhases:z.array(z.enum(PHASES)).default([]),phase:z.enum(PHASES),startedAt:z.string(),updatedAt:z.string(),
- estimate:z.any().optional(),notes:z.array(z.string()).default([]),final:FinalStatus.optional(),stopped:z.string().optional()
+ estimate:z.any().optional(),notes:z.array(z.string()).default([]),final:FinalStatus.optional(),stopped:z.string().optional(),
+ /** Observability only (Phase 0): which CompanySWAI planned this run and where its plan came from. Absent on runs created before it existed. */
+ companyVersion:CompanyVersion.optional(),
+ provenance:z.object({source:z.enum(["brief","supplied-plan"]),lessonsInjected:z.number().int().nonnegative(),lessonsAvailable:z.number().int().nonnegative().optional()}).optional()
 });
 export type RunStateValue=z.infer<typeof RunState>;
 

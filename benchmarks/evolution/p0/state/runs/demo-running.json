@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "projectId": "demo-running",
+  "planHash": "3107ecb2a4fe3c1f",
+  "notes": [],
+  "briefHash": "3107ecb2a4fe3c1f",
+  "completedPhases": [
+    "PLAN",
+    "ESTIMATE",
+    "APPROVAL"
+  ],
+  "phase": "EXECUTE",
+  "startedAt": "2026-01-20T12:00:00.000Z",
+  "updatedAt": "2026-01-20T12:05:00.000Z",
+  "companyVersion": {
+    "gitSha": "0000000000000000000000000000000000000000",
+    "dirty": false,
+    "organizationHash": "f1x7ure0000000a1",
+    "organizationFiles": 3,
+    "packageVersion": "0.1.0",
+    "at": "2026-01-10T09:00:00.000Z"
+  },
+  "provenance": {
+    "source": "supplied-plan",
+    "lessonsInjected": 0
+  }
+}

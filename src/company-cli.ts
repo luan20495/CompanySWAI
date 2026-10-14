@@ -7,10 +7,11 @@ import {SkillCatalog} from "./skill-selector.js";
 import {dryRunSelector} from "./providers/dry-run.js";
 import {CompanyState} from "./state.js";
 import {ProjectPlan} from "./project.js";
+import {interventionActor,noteIntervention} from "./intervention-log.js";
 
-const USAGE="Usage: npm run company -- <project-brief.json|project-plan.json> [--dry-run] [--runtime config/providers.json] [--state-dir .companyswai] [--wait-approval[=seconds]] [--replan] [--max-parallel N] [--supervise[=minutes]]";
+const USAGE="Usage: npm run company -- <project-brief.json|project-plan.json> [--dry-run] [--runtime config/providers.json] [--state-dir .companyswai] [--wait-approval[=seconds]] [--replan] [--max-parallel N] [--supervise[=minutes]] [--actor name]";
 const args=process.argv.slice(2);
-const valueFlags=["--runtime","--state-dir","--max-parallel"];
+const valueFlags=["--runtime","--state-dir","--max-parallel","--actor"];
 const flagValue=(name:string)=>{const i=args.indexOf(name);return i>=0?args[i+1]:undefined;};
 const inputPath=args.find((a,i)=>!a.startsWith("--")&&!valueFlags.includes(args[i-1]??""));
 if(!inputPath)throw new Error(USAGE);
@@ -28,6 +29,9 @@ const raw=JSON.parse(await readFile(inputPath,"utf8"));
 const isPlan=raw&&typeof raw==="object"&&"tasks" in raw;
 const selector=dryRun?dryRunSelector():(await loadRuntime(runtimePath)).selector;
 const knownRoles=(await new MarkdownAgentRegistry().loadAll()).map(agent=>agent.id),knownSkills=(await new SkillCatalog().load()).map(skill=>skill.name);
+// Starting (or replanning) work is a human decision; record it so interventions per accepted task can be measured.
+await noteIntervention(state.interventions,{kind:args.includes("--replan")?"replan":"dispatch",projectId:typeof raw?.projectId==="string"?raw.projectId:undefined,actor:interventionActor(flagValue("--actor")),via:"npm run company",
+ detail:(isPlan?"supplied plan":"brief")+(dryRun?", dry-run":"")+(superviseArg?", supervise":"")+(maxParallel?", max-parallel "+maxParallel:"")});
 
 try{
  // brief -> plan -> estimate -> approval -> execute (research..QA, review, gates, integration) -> final status -> retrospective; resumes from any crash.

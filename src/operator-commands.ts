@@ -5,6 +5,7 @@ import type {OrchestratorOptions} from "./orchestrator.js";
 import type {ProviderSelector} from "./provider-selector.js";
 import type {CompanyState} from "./state.js";
 import {redact,redactError} from "./secrets.js";
+import {interventionActor,noteIntervention} from "./intervention-log.js";
 import {
  OperatorError,agentsView,blockersView,handoffsView,loadProjectModel,logEntries,projectSummaries,qaView,resolveProject,resolveTask,reviewsView,statusView,taskDetail,usageView,
  type LoadOptions,type ProjectModel
@@ -50,11 +51,11 @@ export const OPERATOR_USAGE=[
  "  stop     [project] [--reason text]    ask the running engine to stop safely between steps",
  "  resume   [project] [--dry-run] [--runtime file] [--max-parallel N] [--supervise[=minutes]]   continue from the persisted plan and log",
  "  priority [project] <task> [--apply]   preview/apply a higher scheduling priority for a task and its unfinished upstream tasks",
- "Options: --project <id>, --json (machine-readable), --state-dir <dir> (default .companyswai)"
+ "Options: --project <id>, --json (machine-readable), --state-dir <dir> (default .companyswai), --actor <name> (who asked for stop/resume/priority; recorded, unverified)"
 ].join("\n");
 
 const BOOLEAN=new Set(["--json","--evidence","--full","--latest","--apply","--dry-run"]);
-const VALUED=new Set(["--project","-p","--role","--state","--agent","--task","--tail","--reason","--runtime","--max-parallel","--state-dir"]);
+const VALUED=new Set(["--project","-p","--role","--state","--agent","--task","--tail","--reason","--runtime","--max-parallel","--state-dir","--actor"]);
 const TASK_STATES=new Set<string>(["DONE","RUNNING","BLOCKED","PAUSED","AWAITING_APPROVAL","WAITING","READY","INTERRUPTED"]);
 const usage=(message:string)=>new OperatorError("USAGE",message+"\n"+OPERATOR_USAGE);
 
@@ -106,7 +107,7 @@ export async function stopProject(state:CompanyState,projectId:string,reason="",
 }
 
 export type ResumeOutcome={noop:boolean;message:string;result?:AutonomousResult};
-export async function resumeProject(ctx:OperatorContext,projectId:string,options:{dryRun:boolean;runtimePath?:string;supervise?:(run:()=>Promise<AutonomousResult>)=>Promise<AutonomousResult>}):Promise<ResumeOutcome>{
+export async function resumeProject(ctx:OperatorContext,projectId:string,options:{dryRun:boolean;runtimePath?:string;actor?:string;supervise?:(run:()=>Promise<AutonomousResult>)=>Promise<AutonomousResult>}):Promise<ResumeOutcome>{
  const {state}=ctx,model=await loadProjectModel(state,projectId,ctx);
  if(!model.plan||!model.run)throw new OperatorError("NO_PLAN","Project '"+projectId+"' has no persisted plan/run to resume. Start it with `npm run company -- <brief.json>`.");
  await engineGuard(model,"Refusing to start a second engine on the same project; use `stop` first if you want it to stop.");
@@ -116,6 +117,7 @@ export async function resumeProject(ctx:OperatorContext,projectId:string,options
  if(!ctx.engine)throw new OperatorError("UNSUPPORTED","This host cannot start an engine (no provider runtime configured).");
  const engine=await ctx.engine({dryRun:options.dryRun,runtimePath:options.runtimePath});
  await state.stops.clear(projectId);
+ await noteIntervention(state.interventions,{kind:"resume",projectId,actor:interventionActor(options.actor),via:"npm run operator -- resume",detail:(options.dryRun?"dry-run":"live")+(options.supervise?", supervise":"")});
  const once=()=>runAutonomous({plan:model.plan!},{state,selector:engine.selector,dryRun:options.dryRun,resumeStored:true,knownRoles:engine.knownRoles,knownSkills:engine.knownSkills,orchestrator:ctx.orchestrator});
  const result=await(options.supervise?options.supervise(once):once());
  return {noop:false,message:"",result};
@@ -197,10 +199,14 @@ export async function runOperator(argv:string[],ctx:OperatorContext):Promise<Ope
   const {project,value}=target(positionals,flags,spec[command]);
   const resolved=await resolveProject(state,project),{projectId}=resolved;
   if(command==="stop"){
-   const outcome=await stopProject(state,projectId,text(flags,"--reason")??"",ctx);return emit(outcome,()=>outcome.message);
+   const outcome=await stopProject(state,projectId,text(flags,"--reason")??"",ctx);
+   if(outcome.requested)await noteIntervention(state.interventions,{kind:"stop",projectId,actor:interventionActor(text(flags,"--actor")),via:"npm run operator -- stop",detail:text(flags,"--reason")});
+   return emit(outcome,()=>outcome.message);
   }
   if(command==="priority"){
-   const outcome=await prioritizeTask(state,projectId,value!,flags.has("--apply"),ctx);return emit(outcome,()=>outcome.message);
+   const outcome=await prioritizeTask(state,projectId,value!,flags.has("--apply"),ctx);
+   if(outcome.applied)await noteIntervention(state.interventions,{kind:"priority",projectId,taskId:outcome.target,actor:interventionActor(text(flags,"--actor")),via:"npm run operator -- priority",detail:outcome.changes.map(c=>c.taskId+": "+c.from+" -> "+c.to).join(", ")});
+   return emit(outcome,()=>outcome.message);
   }
   if(command==="resume"){
    const maxParallel=text(flags,"--max-parallel"),supervise=flags.get("--supervise");
@@ -208,7 +214,7 @@ export async function runOperator(argv:string[],ctx:OperatorContext):Promise<Ope
    if(maxParallel&&!(Number.isInteger(Number(maxParallel))&&Number(maxParallel)>0))throw usage("--max-parallel needs a positive integer");
    const minutes=typeof supervise==="string"?Number(supervise):360;
    if(supervise&&!(minutes>0))throw usage("--supervise needs a positive number of minutes");
-   const outcome=await resumeProject(ctxResume,projectId,{dryRun:flags.has("--dry-run"),runtimePath:text(flags,"--runtime"),supervise:supervise?run=>superviseAutonomous(run,{maxWaitMs:minutes*60_000}):undefined});
+   const outcome=await resumeProject(ctxResume,projectId,{dryRun:flags.has("--dry-run"),runtimePath:text(flags,"--runtime"),actor:text(flags,"--actor"),supervise:supervise?run=>superviseAutonomous(run,{maxWaitMs:minutes*60_000}):undefined});
    const summary=summarizeResume(outcome);
    return done(summary.code,asJson?json({noop:outcome.noop,message:outcome.message,summary:outcome.result?.summary,final:outcome.result?.final,stopped:outcome.result?.stopped}):summary.text);
   }

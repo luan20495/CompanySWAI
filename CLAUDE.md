@@ -42,6 +42,8 @@ Use `npm run -s operator -- <command> <project> [options]` (add `--json` if you 
 | "resume" | `resume <p>` (long-running: run it in the background, then poll `status`) |
 | "do publish first" | find the task with `tasks <p>`; `priority <p> <task>` (preview) → show the user → `priority <p> <task> --apply` once they agree |
 | "approve the cost" | only after the user says so: `npm run approve -- <p> <task\|project-approval>` |
+| "how is the company doing?", "what failed and why?", "how many tokens / how long?" | `npm run -s scorecard` (read-only; `--project <p>` for one project, `--baseline` for the audit replay). Report UNKNOWN / NOT AVAILABLE exactly as printed |
+| "I re-ran / fixed / switched the model by hand" | only for what the user says they did: `npm run intervene -- <redispatch\|model-change\|plan-edit\|config-change\|external-fix\|manual> --project <p> --detail "…" --actor <name>` |
 | "start a new project from this brief" | confirm the brief path, then `npm run company -- <brief.json>` in the background (never `--dry-run` unless the user asks: it fabricates output) |
 
 ## Rules

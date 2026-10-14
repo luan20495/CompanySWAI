@@ -10,6 +10,8 @@ import {computeFinalStatus} from "./final-status.js";
 import {PHASES,hashOf,type FinalStatusValue,type Phase,type RunStateValue} from "./run-store.js";
 import type {CompanyState} from "./state.js";
 import {takeoverGate} from "./takeover.js";
+import {companyVersion,type CompanyVersionValue} from "./company-version.js";
+import {lessonsInjected} from "./plan-provenance.js";
 
 /**
  * One command from brief to retrospective. Every phase persists its result before the next starts, so a crash anywhere
@@ -30,6 +32,8 @@ export type AutonomousOptions={
  knownRoles?:string[];knownSkills?:string[];
  /** Returns a reason when this plan must not start writing yet; the run parks and resumes once it passes. Defaults to the takeover gate, so every caller (company, operator resume, benchmark) is covered. */
  executionGate?:(plan:ProjectPlanValue)=>Promise<string|undefined>;
+ /** Which CompanySWAI is planning (recorded on the run for observability). Defaults to reading the repository at `companyRoot` (default "."). */
+ companyVersion?:()=>Promise<CompanyVersionValue>;companyRoot?:string;
  /** Test hook: runs after each completed phase (throw to simulate a crash). */
  afterPhase?:(phase:Phase)=>void|Promise<void>;
 };
@@ -60,14 +64,19 @@ export async function runAutonomous(input:AutonomousInput,options:AutonomousOpti
  let plan=await runs.loadPlan(projectId);
  if(run&&plan&&run.briefHash&&run.briefHash!==inputHash&&!options.replan&&!options.resumeStored)throw new PlanChangedError(projectId);
  if(!run||!plan||(options.replan&&run.briefHash!==inputHash)){
+  let lessonsAvailable:number|undefined;
   if(asBrief){
    const prior=await state.retrospectives.load(projectId);
    const learning:Learning={projectLessons:prior?.lessons,experience:await state.experience.validatedLessons()};
+   lessonsAvailable=(learning.projectLessons?.length??0)+(learning.experience?.length??0);
    plan=await compileBriefToProjectPlan(asBrief,learning);
   }else plan=givenPlan!;
   await runs.savePlan(plan);
   const now=new Date().toISOString();
-  run=await runs.save({version:1,projectId,planHash:hashOf(plan),briefHash:inputHash,completedPhases:[],phase:"PLAN",startedAt:run?.startedAt??now,updatedAt:now,notes:[]});
+  // Observability only: which company planned this and where the plan came from. A failure to read the version never blocks a run.
+  const version=await (options.companyVersion??(()=>companyVersion(options.companyRoot??".")))().catch(()=>undefined);
+  run=await runs.save({version:1,projectId,planHash:hashOf(plan),briefHash:inputHash,completedPhases:[],phase:"PLAN",startedAt:run?.startedAt??now,updatedAt:now,notes:[],
+   companyVersion:version,provenance:{source:asBrief?"brief":"supplied-plan",lessonsInjected:lessonsInjected(plan),lessonsAvailable}});
   await state.memory.recordStatus(projectId,"autonomous","PLAN","compiled "+plan.tasks.length+" task(s), mode "+plan.mode);
  }
  const notes=run!.notes;
